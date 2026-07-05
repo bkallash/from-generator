@@ -47,6 +47,14 @@ return [
             'report' => false,
         ],
 
+        'submissions' => [
+            'driver'     => 'local',
+            'root'       => storage_path('app/private/submissions'),
+            'serve'      => false,
+            'throw'      => true,
+            'visibility' => 'private',
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

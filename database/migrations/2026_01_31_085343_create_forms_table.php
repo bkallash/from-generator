@@ -19,18 +19,13 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->boolean('is_active')->default(true);
             $table->json('schema'); // ← All fields stored here
+            $table->mediumText('ai_insights')->nullable();
+            $table->timestamp('ai_insights_updated_at')->nullable();
             $table->json('settings')->nullable(); // Notifications, redirects, etc.
             $table->timestamps();
-        });
 
-        Schema::create('form_submissions', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('form_id')->constrained()->onDelete('cascade');
-            $table->json('data'); // All submitted field values
-            $table->string('ip_address')->nullable();
-            $table->text('user_agent')->nullable();
-            $table->timestamp('submitted_at');
-            $table->timestamps();
+            $table->index(['user_id', 'is_active'], 'forms_user_active_index');
+            $table->index(['user_id', 'updated_at'], 'forms_user_updated_index');
         });
     }
 
@@ -39,7 +34,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('form_submissions');
         Schema::dropIfExists('forms');
     }
 };

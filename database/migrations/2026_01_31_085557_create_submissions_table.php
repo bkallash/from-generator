@@ -20,9 +20,12 @@ return new class extends Migration
              * {"email": "user@example.com", "message": "Hello!"}
              */
             $table->json('content');
-
+            $table->json('ai_metadata')->nullable();
             $table->string('ip_address')->nullable();
             $table->timestamps();
+
+            $table->index(['form_id', 'created_at'], 'submissions_form_created_index');
+
         });
     }
 

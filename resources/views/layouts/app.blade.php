@@ -8,6 +8,15 @@
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="manifest" href="{{ asset('site.webmanifest') }}">
+    {{-- Apply dark mode immediately to prevent flash --}}
+    <script>
+        (function() {
+            var t = localStorage.getItem('theme');
+            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @stack('styles')
 </head>

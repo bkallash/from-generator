@@ -1,5 +1,5 @@
 {{-- Submissions View --}}
-<div x-show="currentView === 'submissions'" x-cloak x-transition.duration.200ms>
+<div>
     <div x-data="submissionsView()" @keydown.escape.window="closeModal()">
 
         {{-- ── Header ── --}}
@@ -11,7 +11,7 @@
                     Form <strong class="font-semibold">Submissions</strong>
                 </h3>
 
-                @if ($submissions->total() > 0)
+                @if ($submissions->count() > 0)
                     <a href="{{ route('submissions.export', array_filter(['sform' => request('sform'), 'ssearch' => request('ssearch')])) }}"
                         class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-2 border-neutral-900 dark:border-neutral-100 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 hover:bg-transparent dark:hover:bg-transparent hover:text-neutral-900 dark:hover:text-neutral-100 transition-all duration-300 self-start sm:self-auto">
                         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -30,9 +30,11 @@
 
                 {{-- Form filter --}}
                 <div class="relative flex-none">
-                    <select name="sform"
+                    <select name="sform" onchange="this.form.submit()"
                         class="appearance-none h-10 w-full sm:w-52 pl-3 pr-8 text-sm border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent transition">
-                        <option value="">All Forms</option>
+                        @if ($userFormsSimple->isEmpty())
+                            <option value="" disabled selected>No forms created</option>
+                        @endif
                         @foreach ($userFormsSimple as $f)
                             <option value="{{ $f->id }}" @selected(request('sform') == $f->id)>{{ $f->title }}
                             </option>
@@ -103,14 +105,14 @@
             <div
                 class="flex items-center justify-between border-x border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 px-6 py-2.5 transition-colors duration-300">
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                    <span class="font-medium text-neutral-900 dark:text-neutral-100">{{ $submissions->total() }}</span>
-                    submission{{ $submissions->total() !== 1 ? 's' : '' }}
+                    <span class="font-medium text-neutral-900 dark:text-neutral-100">{{ $submissions->count() }}</span>
+                    submission{{ $submissions->count() !== 1 ? 's' : '' }} on this page
                     @if (request('sform') || request('ssearch'))
                         &mdash; filtered
                     @endif
                 </p>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                    Page {{ $submissions->currentPage() }} of {{ $submissions->lastPage() }}
+                    Page {{ $submissions->currentPage() }}
                 </p>
             </div>
 
@@ -139,152 +141,51 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-neutral-200 dark:divide-neutral-800">
-                        @foreach ($submissions as $submission)
-                            @php
-                                $fields = $submission->form->getFields();
-                                $content = $submission->content ?? [];
-
-                                // Build preview: first two non-empty field values with their labels
-                                $previewItems = [];
-                                $fileUrls = [];
-                                $fileImageFlags = [];
-                                $fileInlineImages = [];
-                                $fileNames = [];
-                                $firstImageUrl = null;
-                                $firstImageName = null;
-
-                                foreach ($fields as $field) {
-                                    $fieldId = $field['id'];
-                                    $val = $content[$fieldId] ?? null;
-
-                                    if (($field['type'] ?? null) === 'file' && is_string($val) && $val !== '') {
-                                        $fileNames[$fieldId] = basename($val);
-                                        $fileUrls[$fieldId] = route(
-                                            'submissions.files.download',
-                                            [
-                                                'submission' => $submission->id,
-                                                'fieldId' => $fieldId,
-                                            ],
-                                            false,
-                                        );
-
-                                        $isImage = in_array(
-                                            strtolower(pathinfo($val, PATHINFO_EXTENSION)),
-                                            ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'],
-                                            true,
-                                        );
-                                        $fileImageFlags[$fieldId] = $isImage;
-
-                                        if ($isImage) {
-                                            $disk = \Illuminate\Support\Facades\Storage::disk('local')->exists($val)
-                                                ? 'local'
-                                                : (\Illuminate\Support\Facades\Storage::disk('public')->exists($val)
-                                                    ? 'public'
-                                                    : null);
-
-                                            if ($disk !== null) {
-                                                $bytes = \Illuminate\Support\Facades\Storage::disk($disk)->get($val);
-                                                $ext = strtolower(pathinfo($val, PATHINFO_EXTENSION));
-                                                $mime =
-                                                    [
-                                                        'jpg' => 'image/jpeg',
-                                                        'jpeg' => 'image/jpeg',
-                                                        'png' => 'image/png',
-                                                        'gif' => 'image/gif',
-                                                        'webp' => 'image/webp',
-                                                        'bmp' => 'image/bmp',
-                                                        'svg' => 'image/svg+xml',
-                                                    ][$ext] ?? 'application/octet-stream';
-
-                                                $fileInlineImages[$fieldId] =
-                                                    'data:' . $mime . ';base64,' . base64_encode($bytes);
-                                            }
-                                        }
-
-                                        if ($isImage && $firstImageUrl === null) {
-                                            $firstImageUrl = $fileInlineImages[$fieldId] ?? $fileUrls[$fieldId];
-                                            $firstImageName = $fileNames[$fieldId] ?? 'image';
-                                        }
-                                    }
-
-                                    if (count($previewItems) >= 2) {
-                                        continue;
-                                    }
-
-                                    if ($val !== null && $val !== '' && $val !== []) {
-                                        $displayVal = is_array($val) ? implode(', ', $val) : $val;
-
-                                        if (($field['type'] ?? null) === 'file') {
-                                            $displayVal =
-                                                $fileImageFlags[$fieldId] ?? false ? 'Image uploaded' : 'File uploaded';
-                                        }
-
-                                        $previewItems[] = ['label' => $field['label'], 'value' => $displayVal];
-                                    }
-                                }
-
-                                // Encode for Alpine modal
-                                $modalData = [
-                                    'id' => $submission->id,
-                                    'formTitle' => $submission->form->title,
-                                    'createdAt' => $submission->created_at->format('M d, Y \a\t g:i A'),
-                                    'ipAddress' => $submission->ip_address ?? null,
-                                    'fields' => collect($fields)
-                                        ->map(
-                                            fn($f) => [
-                                                'id' => $f['id'],
-                                                'label' => $f['label'],
-                                                'type' => $f['type'] ?? 'text',
-                                            ],
-                                        )
-                                        ->values()
-                                        ->all(),
-                                    'content' => $content,
-                                    'fileUrls' => $fileUrls,
-                                    'fileImageFlags' => $fileImageFlags,
-                                    'fileInlineImages' => $fileInlineImages,
-                                    'fileNames' => $fileNames,
-                                    'deleteUrl' => route('submissions.destroy', $submission->id),
-                                ];
-                            @endphp
-
+                        @foreach ($submissionRows as $row)
                             <tr class="hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors duration-150 cursor-pointer group"
-                                @click="openModal(@js($modalData))">
+                                @click="openModal(@js($row['modalData']))">
 
                                 {{-- Form name --}}
                                 <td class="px-4 py-4 text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                                    <span class="line-clamp-1">{{ $submission->form->title }}</span>
+                                    <span class="line-clamp-1">{{ $row['formTitle'] }}</span>
                                 </td>
 
-                                {{-- Date --}}
+                                {{-- Date & Sentiment --}}
                                 <td class="px-4 py-4 text-sm text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
-                                    <span title="{{ $submission->created_at->format('Y-m-d H:i:s') }}">
-                                        {{ $submission->created_at->diffForHumans() }}
-                                    </span>
+                                    <div class="flex flex-col gap-1.5 items-start">
+                                        <span title="{{ $row['submittedAtTitle'] }}">
+                                            {{ $row['submittedAtHuman'] }}
+                                        </span>
+                                        @if ($row['sentiment'])
+                                            <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium border {{ $row['sentiment']['class'] }}">
+                                                {{ ucfirst($row['sentiment']['label']) }}
+                                            </span>
+                                        @endif
+                                    </div>
                                 </td>
 
                                 {{-- IP --}}
                                 <td
                                     class="hidden md:table-cell px-4 py-4 text-sm text-neutral-500 dark:text-neutral-500 font-mono">
-                                    {{ $submission->ip_address ?? '—' }}
+                                    {{ $row['ipAddress'] }}
                                 </td>
 
                                 {{-- Preview --}}
                                 <td class="px-4 py-4 max-w-xs">
-                                    @if ($firstImageUrl)
-                                        <a href="{{ $firstImageUrl }}" download="{{ $firstImageName ?? 'image' }}"
-                                            class="inline-block mb-2" title="Download image">
-                                            <img src="{{ $firstImageUrl }}" alt="Submission image preview"
-                                                class="w-12 h-12 rounded object-cover border border-neutral-200 dark:border-neutral-800">
+                                    @if ($row['firstImageUrl'])
+                                        <a href="{{ route('submissions.files.download', ['submission' => $row['id'], 'fieldId' => $row['firstImageFieldId']]) }}" download="{{ $row['firstImageName'] ?? 'image' }}"
+                                            class="inline-block mb-2" title="Download image" @click.stop>
+                                            <img src="{{ $row['firstImageUrl'] }}" alt="Submission image preview"
+                                                class="w-12 h-12 rounded object-cover border border-neutral-200 dark:border-neutral-800" loading="lazy">
                                         </a>
                                     @endif
-                                    @if (count($previewItems))
+                                    @if (count($row['previewItems']))
                                         <div class="flex flex-col gap-0.5">
-                                            @foreach ($previewItems as $item)
+                                            @foreach ($row['previewItems'] as $item)
                                                 <span class="text-xs text-neutral-500 dark:text-neutral-500 truncate">
                                                     <span
                                                         class="font-medium text-neutral-700 dark:text-neutral-300">{{ $item['label'] }}:</span>
-                                                    {{ Str::limit($item['value'], 60) }}
+                                                    {{ $item['value'] }}
                                                 </span>
                                             @endforeach
                                         </div>
@@ -299,7 +200,7 @@
                                     <div class="inline-flex items-center gap-1.5">
 
                                         {{-- View --}}
-                                        <button type="button" @click="openModal(@js($modalData))"
+                                        <button type="button" @click="openModal(@js($row['modalData']))"
                                             class="inline-flex items-center justify-center w-8 h-8 border border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:border-neutral-900 dark:hover:border-neutral-100 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors duration-200"
                                             aria-label="View submission">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor"
@@ -313,7 +214,7 @@
 
                                         {{-- Delete --}}
                                         <form method="POST"
-                                            action="{{ route('submissions.destroy', $submission->id) }}"
+                                            action="{{ $row['deleteUrl'] }}"
                                             @submit.prevent="
                                                 if (confirm('Delete this submission? This cannot be undone.')) $el.submit();
                                             ">
@@ -418,73 +319,103 @@
 
                 {{-- Modal body – field values --}}
                 <div class="p-6 max-h-[60vh] overflow-y-auto">
-                    <template x-if="selected.fields && selected.fields.length > 0">
-                        <div class="space-y-4">
-                            <template x-for="field in selected.fields" :key="field.id">
-                                <div
-                                    class="border-b border-neutral-100 dark:border-neutral-900 pb-4 last:border-0 last:pb-0">
-                                    <p class="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5"
-                                        x-text="field.label"></p>
-                                    <div class="text-sm text-neutral-900 dark:text-neutral-100">
-                                        {{-- Array values (checkbox) --}}
-                                        <template
-                                            x-if="Array.isArray(selected.content[field.id]) && selected.content[field.id].length > 0">
-                                            <div class="flex flex-wrap gap-1.5">
-                                                <template x-for="val in selected.content[field.id]"
-                                                    :key="val">
-                                                    <span
-                                                        class="inline-flex px-2.5 py-0.5 text-xs border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
-                                                        x-text="val"></span>
-                                                </template>
-                                            </div>
-                                        </template>
-                                        {{-- Textarea / long text --}}
-                                        <template
-                                            x-if="!Array.isArray(selected.content[field.id]) && field.type === 'textarea' && selected.content[field.id]">
-                                            <p class="whitespace-pre-wrap leading-relaxed"
-                                                x-text="selected.content[field.id]"></p>
-                                        </template>
-                                        {{-- Secure file download --}}
-                                        <template
-                                            x-if="!Array.isArray(selected.content[field.id]) && field.type === 'file' && selected.content[field.id] && selected.fileImageFlags && selected.fileImageFlags[field.id]">
-                                            <a :href="selected.fileInlineImages && selected.fileInlineImages[field.id] ? selected
-                                                .fileInlineImages[field.id] : ''"
-                                                :download="selected.fileNames && selected.fileNames[field.id] ? selected.fileNames[
-                                                    field.id] : 'image'"
-                                                class="inline-block">
-                                                <img :src="selected.fileInlineImages && selected.fileInlineImages[field.id] ?
-                                                    selected.fileInlineImages[field.id] : (selected.fileUrls && selected
-                                                        .fileUrls[field.id] ? selected.fileUrls[field.id] : '')"
-                                                    alt="Uploaded image"
-                                                    class="w-28 h-28 object-cover rounded border border-neutral-200 dark:border-neutral-800">
-                                            </a>
-                                        </template>
-                                        <template
-                                            x-if="!Array.isArray(selected.content[field.id]) && field.type === 'file' && selected.content[field.id] && (!selected.fileImageFlags || !selected.fileImageFlags[field.id])">
-                                            <a :href="selected.fileUrls && selected.fileUrls[field.id] ? selected.fileUrls[field
-                                                .id] : ''"
-                                                target="_blank" rel="noopener"
-                                                class="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 underline underline-offset-2 hover:opacity-80"
-                                                x-show="selected.fileUrls && selected.fileUrls[field.id]">
-                                                Open file
-                                            </a>
-                                        </template>
-                                        {{-- Regular string --}}
-                                        <template
-                                            x-if="!Array.isArray(selected.content[field.id]) && field.type !== 'textarea' && field.type !== 'file' && selected.content[field.id]">
-                                            <p x-text="selected.content[field.id]"></p>
-                                        </template>
-                                        {{-- Empty --}}
-                                        <template
-                                            x-if="!selected.content[field.id] || (Array.isArray(selected.content[field.id]) && selected.content[field.id].length === 0)">
-                                            <p class="italic text-neutral-400 dark:text-neutral-600">No answer</p>
+                    <template x-if="selected.pages && selected.pages.length > 0">
+                        <div class="space-y-6">
+                            <template x-for="(page, pIdx) in selected.pages" :key="pIdx">
+                                <div class="space-y-4">
+                                    {{-- Page Header --}}
+                                    <div class="border-b border-neutral-200 dark:border-neutral-800 pb-2">
+                                        <h4 class="text-xs font-semibold uppercase tracking-wider text-neutral-800 dark:text-neutral-200" x-text="page.title"></h4>
+                                        <template x-if="page.description">
+                                            <p class="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5" x-text="page.description"></p>
                                         </template>
                                     </div>
+                                    
+                                     {{-- Page Fields --}}
+                                     <template x-if="page.fields && page.fields.length > 0">
+                                         <div class="space-y-4 pl-2">
+                                             <template x-for="field in page.fields" :key="field.id">
+                                                 <div class="border-b border-neutral-100 dark:border-neutral-900 last:border-0 pb-4 last:pb-0">
+                                                     <div class="flex items-center justify-between gap-4 mb-2">
+                                                         <p class="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider" x-text="field.label"></p>
+                                                        <template x-if="selected.aiMetadata && selected.aiMetadata.sentiment && selected.aiMetadata.sentiment[field.id]">
+                                                            <span :class="{
+                                                                'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50': getSentimentLabel(selected.aiMetadata.sentiment[field.id]) === 'positive',
+                                                                'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 border-rose-200 dark:border-rose-900/50': getSentimentLabel(selected.aiMetadata.sentiment[field.id]) === 'negative',
+                                                                'bg-neutral-50 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800': getSentimentLabel(selected.aiMetadata.sentiment[field.id]) === 'neutral'
+                                                            }" class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium border uppercase" x-text="getSentimentLabel(selected.aiMetadata.sentiment[field.id])"></span>
+                                                        </template>
+                                                    </div>
+                                                    <div class="text-sm text-neutral-900 dark:text-neutral-100">
+                                                        {{-- Array values (checkbox) --}}
+                                                        <template x-if="Array.isArray(selected.content[field.id]) && selected.content[field.id].length > 0">
+                                                            <div class="flex flex-wrap gap-1.5">
+                                                                <template x-for="val in selected.content[field.id]" :key="val">
+                                                                    <span class="inline-flex px-2.5 py-0.5 text-xs border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300" x-text="val"></span>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                        {{-- Textarea / long text --}}
+                                                        <template x-if="!Array.isArray(selected.content[field.id]) && field.type === 'textarea' && selected.content[field.id]">
+                                                            <p class="whitespace-pre-wrap leading-relaxed" x-text="selected.content[field.id]"></p>
+                                                        </template>
+                                                        {{-- Secure file download --}}
+                                                        <template x-if="!Array.isArray(selected.content[field.id]) && (field.type === 'file' || field.type === 'image') && selected.content[field.id] && selected.fileImageFlags && selected.fileImageFlags[field.id]">
+                                                            <a :href="selected.fileUrls && selected.fileUrls[field.id] ? selected.fileUrls[field.id] : ''" :download="selected.fileNames && selected.fileNames[field.id] ? selected.fileNames[field.id] : 'image'" class="inline-block" title="Download original image">
+                                                                <img :src="selected.fileInlineImages && selected.fileInlineImages[field.id] ? selected.fileInlineImages[field.id] : (selected.fileUrls && selected.fileUrls[field.id] ? selected.fileUrls[field.id] : '')" alt="Uploaded image" class="w-28 h-28 object-cover rounded border border-neutral-200 dark:border-neutral-800" loading="lazy">
+                                                            </a>
+                                                        </template>
+                                                        <template x-if="!Array.isArray(selected.content[field.id]) && (field.type === 'file' || field.type === 'image') && selected.content[field.id] && (!selected.fileImageFlags || !selected.fileImageFlags[field.id])">
+                                                            <a :href="selected.fileUrls && selected.fileUrls[field.id] ? selected.fileUrls[field.id] : ''" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-sm text-neutral-900 dark:text-neutral-100 underline underline-offset-2 hover:opacity-80" x-show="selected.fileUrls && selected.fileUrls[field.id]">
+                                                                Open file
+                                                            </a>
+                                                        </template>
+                                                        {{-- Regular string --}}
+                                                        <template x-if="!Array.isArray(selected.content[field.id]) && field.type !== 'textarea' && field.type !== 'file' && field.type !== 'image' && selected.content[field.id]">
+                                                            <p x-text="selected.content[field.id]"></p>
+                                                        </template>
+                                                        {{-- Empty --}}
+                                                        <template x-if="!selected.content[field.id] || (Array.isArray(selected.content[field.id]) && selected.content[field.id].length === 0)">
+                                                            <p class="italic text-neutral-400 dark:text-neutral-600">No answer</p>
+                                                        </template>
+
+                                                        {{-- Detailed Sentiment Details --}}
+                                                        <template x-if="selected.aiMetadata && selected.aiMetadata.sentiment && selected.aiMetadata.sentiment[field.id] && typeof selected.aiMetadata.sentiment[field.id] === 'object'">
+                                                            <div class="mt-2.5 p-3 rounded bg-neutral-50/50 dark:bg-neutral-900/30 border border-neutral-100 dark:border-neutral-800/80 text-xs transition-all">
+                                                                <div class="flex flex-wrap items-center gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+                                                                    <span class="font-medium text-neutral-700 dark:text-neutral-300">AI Sentiment Details:</span>
+                                                                    
+                                                                    <!-- Intensity / Confidence Score Meter -->
+                                                                    <div class="flex items-center gap-1.5 bg-white dark:bg-neutral-950 px-2 py-0.5 rounded border border-neutral-200/60 dark:border-neutral-800">
+                                                                        <span class="text-neutral-400">Intensity:</span>
+                                                                        <span class="font-semibold text-neutral-800 dark:text-neutral-200" x-text="Math.round(selected.aiMetadata.sentiment[field.id].score * 100) + '%'"></span>
+                                                                    </div>
+
+                                                                    <!-- Identified Emotions -->
+                                                                    <template x-if="selected.aiMetadata.sentiment[field.id].emotions && selected.aiMetadata.sentiment[field.id].emotions.length > 0">
+                                                                        <div class="flex flex-wrap gap-1.5 items-center">
+                                                                            <span class="text-neutral-400">Emotions:</span>
+                                                                            <template x-for="emo in selected.aiMetadata.sentiment[field.id].emotions" :key="emo">
+                                                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-100 dark:border-purple-900/30 capitalize" x-text="emo"></span>
+                                                                            </template>
+                                                                        </div>
+                                                                    </template>
+                                                                </div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template x-if="!page.fields || page.fields.length === 0">
+                                        <p class="text-xs text-neutral-400 dark:text-neutral-600 italic pl-2">No fields on this page</p>
+                                    </template>
                                 </div>
                             </template>
                         </div>
                     </template>
-                    <template x-if="!selected.fields || selected.fields.length === 0">
+                    <template x-if="!selected.pages || selected.pages.length === 0">
                         <p class="text-sm text-neutral-500 dark:text-neutral-400 italic text-center py-8">
                             No field data available.
                         </p>
@@ -521,22 +452,38 @@
 
 @push('scripts')
     <script>
-        document.addEventListener('alpine:init', () => {
-            Alpine.data('submissionsView', () => ({
-                modalOpen: false,
-                selected: {},
+        (function() {
+            const register = () => {
+                Alpine.data('submissionsView', () => ({
+                    modalOpen: false,
+                    selected: {},
 
-                openModal(data) {
-                    this.selected = data;
-                    this.modalOpen = true;
-                    document.body.classList.add('overflow-hidden');
-                },
+                    openModal(data) {
+                        this.selected = data;
+                        this.modalOpen = true;
+                        document.body.classList.add('overflow-hidden');
+                    },
 
-                closeModal() {
-                    this.modalOpen = false;
-                    document.body.classList.remove('overflow-hidden');
-                },
-            }));
-        });
+                    closeModal() {
+                        this.modalOpen = false;
+                        document.body.classList.remove('overflow-hidden');
+                    },
+
+                    getSentimentLabel(sentiment) {
+                        if (!sentiment) return '';
+                        if (typeof sentiment === 'object') {
+                            return sentiment.label || 'neutral';
+                        }
+                        return sentiment;
+                    },
+                }));
+            };
+
+            if (window.Alpine) {
+                register();
+            } else {
+                document.addEventListener('alpine:init', register);
+            }
+        })();
     </script>
 @endpush

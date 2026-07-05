@@ -8,6 +8,15 @@
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="manifest" href="{{ asset('site.webmanifest') }}">
+    {{-- Apply dark mode immediately to prevent flash on wire:navigate --}}
+    <script>
+        (function() {
+            var t = localStorage.getItem('theme');
+            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
         [x-cloak] {
@@ -31,55 +40,42 @@
                 </div>
 
                 <!-- Navigation -->
-                <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto" x-data="{ currentView: $store.dashboardNav?.currentView || 'dashboard' }" x-init="$watch('$store.dashboardNav.currentView', value => currentView = value)">
-                    <button @click="$dispatch('switch-view', 'dashboard'); $store.dashboardNav.currentView = 'dashboard'"
-                        :class="currentView === 'dashboard' ?
-                            'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' :
-                            'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100'"
-                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200">
+                <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+                    <a href="{{ route('dashboard', ['view' => 'dashboard']) }}" wire:navigate
+                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200 {{ request('view', 'dashboard') === 'dashboard' ? 'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100' }}">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                         </svg>
                         <span>Dashboard</span>
-                    </button>
+                    </a>
 
-                    <button @click="$dispatch('switch-view', 'forms'); $store.dashboardNav.currentView = 'forms'"
-                        :class="currentView === 'forms' ?
-                            'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' :
-                            'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100'"
-                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200">
+                    <a href="{{ route('dashboard', ['view' => 'forms']) }}" wire:navigate
+                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200 {{ request('view') === 'forms' ? 'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100' }}">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <span>Forms</span>
-                    </button>
+                    </a>
 
-                    <button
-                        @click="$dispatch('switch-view', 'submissions'); $store.dashboardNav.currentView = 'submissions'"
-                        :class="currentView === 'submissions' ?
-                            'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' :
-                            'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100'"
-                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200">
+                    <a href="{{ route('dashboard', ['view' => 'submissions']) }}" wire:navigate
+                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200 {{ request('view') === 'submissions' ? 'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100' }}">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
                         <span>Submissions</span>
-                    </button>
+                    </a>
 
-                    <button @click="$dispatch('switch-view', 'analytics'); $store.dashboardNav.currentView = 'analytics'"
-                        :class="currentView === 'analytics' ?
-                            'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' :
-                            'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100'"
-                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200">
+                    <a href="{{ route('dashboard', ['view' => 'analytics']) }}" wire:navigate
+                        class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200 {{ request('view') === 'analytics' ? 'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100' }}">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                         </svg>
                         <span>Analytics</span>
-                    </button>
+                    </a>
 
                     {{-- Create Form shortcut --}}
                     <a href="{{ route('forms.create') }}"
@@ -91,11 +87,8 @@
                     </a>
 
                     <div class="pt-6 border-t border-neutral-200 dark:border-neutral-800 mt-6">
-                        <button @click="$dispatch('switch-view', 'settings'); $store.dashboardNav.currentView = 'settings'"
-                            :class="currentView === 'settings' ?
-                                'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' :
-                                'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100'"
-                            class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200">
+                        <a href="{{ route('dashboard', ['view' => 'settings']) }}" wire:navigate
+                            class="w-full flex items-center space-x-3 px-4 py-3 text-sm font-medium transition-colors duration-200 {{ request('view') === 'settings' ? 'bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 hover:text-neutral-900 dark:hover:text-neutral-100' }}">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -103,7 +96,7 @@
                                     d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                             <span>Settings</span>
-                        </button>
+                        </a>
                     </div>
                 </nav>
 
@@ -129,9 +122,8 @@
                     class="h-20 bg-white dark:bg-neutral-950 border-b border-neutral-200 dark:border-neutral-800 transition-colors duration-300">
                     <div class="h-full px-6 flex items-center justify-between">
                         <div>
-                            <h1 class="text-2xl font-light tracking-tight" x-data
-                                x-text="($store.dashboardNav?.currentView ?? 'dashboard').replace(/^\w/, c => c.toUpperCase())">
-                                Dashboard
+                            <h1 class="text-2xl font-light tracking-tight">
+                                {{ ucfirst(request('view', 'dashboard')) }}
                             </h1>
                         </div>
                         <div class="flex items-center space-x-4">

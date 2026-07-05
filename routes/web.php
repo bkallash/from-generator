@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\EmailVerificationController;
@@ -10,7 +10,7 @@ use App\Http\Controllers\SubmissionController;
 use App\Http\Middleware\SecurePublicFormSubmission;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn() => view('welcome'))->name('home');
+Route::get('/', fn () => view('welcome'))->name('home');
 Route::view('/terms', 'terms')->name('terms');
 Route::view('/privacy', 'privacy')->name('privacy');
 
@@ -37,10 +37,10 @@ Route::middleware('auth')->group(function () {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    Route::get('/profile', fn() => redirect('/dashboard#profile'))->name('profile');
+    Route::get('/profile', fn () => redirect('/dashboard#profile'))->name('profile');
 
     // Forms (authenticated)
     Route::get('/forms/create', [FormController::class, 'create'])->name('forms.create');
@@ -53,6 +53,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/submissions/export', [SubmissionController::class, 'export'])->name('submissions.export');
     Route::get('/submissions/{submission}/files/{fieldId}', [SubmissionController::class, 'downloadFile'])
         ->name('submissions.files.download');
+    Route::get('/submissions/{submission}/thumbnail/{fieldId}', [SubmissionController::class, 'showThumbnail'])
+        ->name('submissions.files.thumbnail');
     Route::delete('/submissions/{submission}', [SubmissionController::class, 'destroy'])->name('submissions.destroy');
 });
 
@@ -66,6 +68,9 @@ Route::get('auth/google/callback', [GoogleController::class, 'handleGoogleCallba
 
 // Public form pages
 Route::get('/f/{slug}', [FormController::class, 'show'])->name('forms.show');
+Route::post('/f/{slug}/page/{page}', [FormController::class, 'savePage'])
+    ->middleware(['throttle:30,1', SecurePublicFormSubmission::class])
+    ->name('forms.save-page');
 Route::post('/f/{slug}', [FormController::class, 'submit'])
     ->middleware(['throttle:10,1', SecurePublicFormSubmission::class])
     ->name('forms.submit');

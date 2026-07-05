@@ -36,13 +36,38 @@ class SecurePublicFormSubmission
             return $this->denySubmission();
         }
 
-        $fields = $form->getFields();
+        // Get saved progress to determine which fields to validate and logic triggers
+        $progress = session()->get("form_progress.{$form->id}", []);
 
-        if ($this->hasUnexpectedInputs($request, $fields)) {
+        // Determine current page number
+        $pageRouteParam = $request->route('page');
+        if ($pageRouteParam !== null) {
+            $currentPageNumber = (int) $pageRouteParam;
+        } else {
+            // Final submit assumes the last visible page.
+            $visiblePages = $this->getVisiblePageIndexes($form, $progress);
+            $lastPageIdx = !empty($visiblePages) ? end($visiblePages) : 0;
+            $currentPageNumber = $lastPageIdx + 1;
+        }
+
+        $currentPageIdx = $currentPageNumber - 1;
+        $fieldsToValidate = $form->getPageFields($currentPageIdx);
+
+        // Verify no unexpected inputs for the current page
+        if ($this->hasUnexpectedInputs($request, $fieldsToValidate)) {
             return $this->denySubmission();
         }
 
-        [$rules, $attributes] = $this->buildValidationRules($fields);
+        // Flatten all data (previous saved progress + current inputs) to evaluate conditions
+        $flatData = [];
+        foreach ($progress as $pIdx => $pageData) {
+            if ($pIdx !== $currentPageIdx && is_array($pageData)) {
+                $flatData = array_merge($flatData, $pageData);
+            }
+        }
+        $flatData = array_merge($flatData, $request->all());
+
+        [$rules, $attributes] = $this->buildValidationRules($fieldsToValidate, $flatData);
 
         $validator = Validator::make($request->all(), $rules, [], $attributes);
 
@@ -109,9 +134,10 @@ class SecurePublicFormSubmission
 
     /**
      * @param array<int, array<string, mixed>> $fields
+     * @param array<string, mixed> $flatData
      * @return array{0: array<string, mixed>, 1: array<string, string>}
      */
-    protected function buildValidationRules(array $fields): array
+    protected function buildValidationRules(array $fields, array $flatData): array
     {
         $inputTypes = [
             'text',
@@ -125,6 +151,7 @@ class SecurePublicFormSubmission
             'radio',
             'checkbox',
             'file',
+            'image',
         ];
 
         $rules = [];
@@ -144,8 +171,32 @@ class SecurePublicFormSubmission
             }
 
             $required = (bool) ($field['required'] ?? false);
-            $label = (string) ($field['label'] ?? $id);
 
+            // Conditional Logic check: if condition is not met, downgrade required to nullable
+            if (isset($field['conditionalLogic']) && $field['conditionalLogic']) {
+                $logic = $field['conditionalLogic'];
+                $triggerFieldId = $logic['triggerFieldId'] ?? null;
+                $triggerValue = $logic['triggerValue'] ?? null;
+                $action = $logic['action'] ?? 'show';
+
+                if ($triggerFieldId) {
+                    $triggerVal = $flatData[$triggerFieldId] ?? null;
+                    
+                    $conditionMet = false;
+                    if (is_array($triggerVal)) {
+                        $conditionMet = in_array($triggerValue, $triggerVal);
+                    } else {
+                        $conditionMet = (string) $triggerVal === (string) $triggerValue;
+                    }
+
+                    $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
+                    if (! $shouldShow) {
+                        $required = false; // Hidden field is not required
+                    }
+                }
+            }
+
+            $label = (string) ($field['label'] ?? $id);
             $attributes[$id] = $label;
 
             if ($type === 'checkbox') {
@@ -156,6 +207,16 @@ class SecurePublicFormSubmission
                 if ($options !== []) {
                     $rules[$id . '.*'][] = Rule::in($options);
                 }
+
+                continue;
+            }
+
+            if ($type === 'image') {
+                $rules[$id] = [
+                    $required ? 'required' : 'nullable',
+                    'image',
+                    'max:6144',
+                ];
 
                 continue;
             }
@@ -223,7 +284,7 @@ class SecurePublicFormSubmission
      */
     protected function hasUnexpectedInputs(Request $request, array $fields): bool
     {
-        $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox', 'file'];
+        $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox', 'file', 'image'];
         $allowedKeys = ['_token', '_hp_website', '_hp_time'];
 
         foreach ($fields as $field) {
@@ -267,12 +328,59 @@ class SecurePublicFormSubmission
         return array_values(array_filter($options, static fn(string $option): bool => $option !== ''));
     }
 
-    protected function denySubmission(): RedirectResponse
+    protected function denySubmission(): Response
     {
         return back()
             ->withInput()
             ->withErrors([
                 'form' => 'Unable to validate your submission. Please refresh and try again.',
             ]);
+    }
+
+    private function getVisiblePageIndexes(Form $form, array $progressData): array
+    {
+        $visible = [];
+        $pages = $form->getPages();
+
+        $flatData = [];
+        foreach ($progressData as $pageData) {
+            if (is_array($pageData)) {
+                $flatData = array_merge($flatData, $pageData);
+            }
+        }
+
+        foreach ($pages as $i => $page) {
+            if (! isset($page['conditionalLogic']) || !$page['conditionalLogic']) {
+                $visible[] = $i;
+                continue;
+            }
+
+            $logic = $page['conditionalLogic'];
+            $triggerFieldId = $logic['triggerFieldId'] ?? null;
+            $triggerValue = $logic['triggerValue'] ?? null;
+            $action = $logic['action'] ?? 'show';
+
+            if (! $triggerFieldId) {
+                $visible[] = $i;
+                continue;
+            }
+
+            $val = $flatData[$triggerFieldId] ?? null;
+            
+            $conditionMet = false;
+            if (is_array($val)) {
+                $conditionMet = in_array($triggerValue, $val);
+            } else {
+                $conditionMet = (string) $val === (string) $triggerValue;
+            }
+
+            $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
+
+            if ($shouldShow) {
+                $visible[] = $i;
+            }
+        }
+
+        return $visible;
     }
 }

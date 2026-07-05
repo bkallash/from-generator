@@ -1,5 +1,5 @@
 {{-- Forms View --}}
-<div x-show="currentView === 'forms'" x-cloak x-transition.duration.200ms>
+<div>
     <div
         class="bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 p-8 transition-colors duration-300">
         <div class="flex items-center justify-between mb-6">

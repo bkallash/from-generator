@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -31,7 +32,7 @@ class RegisteredUserController extends Controller
     {
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
+            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
@@ -41,11 +42,14 @@ class RegisteredUserController extends Controller
             'password' => Hash::make($request->password),
         ]);
 
+        $user->markEmailAsVerified();
+
         event(new Registered($user));
+        event(new Verified($user));
 
         Auth::login($user);
 
-        return redirect()->route('verification.notice')
-            ->with('success', 'Account created successfully! We\'ve sent a verification email to ' . $user->email . '. Please check your inbox and verify your account to get started.');
+        return redirect()->route('dashboard')
+            ->with('success', 'Account created and email verified successfully!');
     }
 }

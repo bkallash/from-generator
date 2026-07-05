@@ -1,12 +1,12 @@
 <div class="space-y-6">
     <div class="mb-6">
-        <button @click="window.dispatchEvent(new CustomEvent('switch-view', { detail: 'dashboard' }))"
+        <a href="{{ route('dashboard', ['view' => 'dashboard']) }}" wire:navigate
             class="inline-flex items-center text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors">
             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to Dashboard
-        </button>
+        </a>
     </div>
 
     <!-- Success Message -->
@@ -51,11 +51,10 @@
                     class="bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-6 py-3 text-sm font-medium border-2 border-neutral-900 dark:border-neutral-100 transition-all duration-300 hover:bg-transparent dark:hover:bg-transparent hover:text-neutral-900 dark:hover:text-neutral-100">
                     Save Changes
                 </button>
-                <button type="button"
-                    @click="window.dispatchEvent(new CustomEvent('switch-view', { detail: 'dashboard' }))"
-                    class="px-6 py-3 text-sm font-medium border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all duration-300">
+                <a href="{{ route('dashboard', ['view' => 'dashboard']) }}" wire:navigate
+                    class="px-6 py-3 text-sm font-medium border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all duration-300 inline-flex items-center">
                     Cancel
-                </button>
+                </a>
                 <div wire:loading wire:target="updateProfile"
                     class="text-sm text-neutral-500 dark:text-neutral-400 font-light">
                     Saving...
@@ -108,11 +107,10 @@
                         class="bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-6 py-3 text-sm font-medium border-2 border-neutral-900 dark:border-neutral-100 transition-all duration-300 hover:bg-transparent dark:hover:bg-transparent hover:text-neutral-900 dark:hover:text-neutral-100">
                         Update Password
                     </button>
-                    <button type="button"
-                        @click="window.dispatchEvent(new CustomEvent('switch-view', { detail: 'dashboard' }))"
-                        class="px-6 py-3 text-sm font-medium border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all duration-300">
+                    <a href="{{ route('dashboard', ['view' => 'dashboard']) }}" wire:navigate
+                        class="px-6 py-3 text-sm font-medium border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-900 hover:text-neutral-900 dark:hover:text-neutral-100 transition-all duration-300 inline-flex items-center">
                         Cancel
-                    </button>
+                    </a>
                     <div wire:loading wire:target="updatePassword"
                         class="text-sm text-neutral-500 dark:text-neutral-400 font-light">
                         Saving...

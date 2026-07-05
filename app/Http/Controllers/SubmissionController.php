@@ -40,18 +40,47 @@ class SubmissionController extends Controller
         return $this->serveSubmissionFile($submission, $fieldId);
     }
 
+    public function showThumbnail(Request $request, Submission $submission, string $fieldId)
+    {
+        $user = $request->user();
+        abort_if(! $user || $submission->form->user_id !== $user->id, 403);
+
+        $filePath = $submission->content[$fieldId] ?? null;
+        if (! is_string($filePath) || $filePath === '') {
+            abort(404);
+        }
+
+        // Derive thumbnail path by appending _thumb before extension
+        $extension = pathinfo($filePath, PATHINFO_EXTENSION);
+        $basePath = substr($filePath, 0, -(strlen($extension) + 1));
+        $thumbPath = $basePath . '_thumb.' . $extension;
+
+        if (! Storage::disk('submissions')->exists($thumbPath)) {
+            abort(404);
+        }
+
+        $fullPath = Storage::disk('submissions')->path($thumbPath);
+
+        return response()->file($fullPath, [
+            'Content-Type' => 'image/webp',
+            'Cache-Control' => 'private, max-age=86400, no-transform',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     protected function serveSubmissionFile(Submission $submission, string $fieldId)
     {
-
         $filePath = $submission->content[$fieldId] ?? null;
 
         if (! is_string($filePath) || $filePath === '') {
             abort(404);
         }
 
-        $disk = Storage::disk('local')->exists($filePath)
-            ? 'local'
-            : (Storage::disk('public')->exists($filePath) ? 'public' : null);
+        $disk = Storage::disk('submissions')->exists($filePath)
+            ? 'submissions'
+            : (Storage::disk('local')->exists($filePath)
+                ? 'local'
+                : (Storage::disk('public')->exists($filePath) ? 'public' : null));
 
         if ($disk === null) {
             abort(404);
@@ -83,9 +112,16 @@ class SubmissionController extends Controller
         $formFilter  = $request->query('sform');
         $searchQuery = $request->query('ssearch');
 
+        if (!$formFilter) {
+            $latestForm = \App\Models\Form::where('user_id', $user->id)->latest()->first();
+            if ($latestForm) {
+                $formFilter = $latestForm->id;
+            }
+        }
+
         $query = Submission::query()
-            ->whereHas('form', fn($q) => $q->where('user_id', $user->id))
-            ->with('form')
+            ->whereIn('form_id', $user->forms()->select('id'))
+            ->with('form:id,title,schema')
             ->latest();
 
         if ($formFilter) {
@@ -101,8 +137,12 @@ class SubmissionController extends Controller
         // Build a unified header across all forms' fields
         $fieldLabels = [];
         foreach ($submissions as $submission) {
-            foreach ($submission->form->getFields() as $field) {
-                $fieldLabels[$field['id']] = $field['label'];
+            $pages = $submission->form->getPages();
+            foreach ($pages as $pIdx => $page) {
+                $pageTitle = $page['title'] ?: 'Page ' . ($pIdx + 1);
+                foreach ($page['fields'] ?? [] as $field) {
+                    $fieldLabels[$field['id']] = '[' . $pageTitle . '] ' . $field['label'];
+                }
             }
         }
 
@@ -120,7 +160,7 @@ class SubmissionController extends Controller
                 $value = $submission->content[$fieldId] ?? '';
 
                 // Export file uploads as plain absolute URLs for maximum CSV client compatibility.
-                if (is_string($value) && str_starts_with($value, 'submissions/')) {
+                if (is_string($value) && (str_starts_with($value, 'submissions/') || preg_match('/^\d+\/\d+\/field_/', $value))) {
                     $relativeUrl = route('submissions.files.download-attachment', [
                         'submission' => $submission->id,
                         'fieldId' => $fieldId,
