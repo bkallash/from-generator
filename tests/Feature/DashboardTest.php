@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Models\Form;
 use App\Models\Submission;
+use App\Jobs\GenerateIntelligenceDataJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -109,4 +110,33 @@ it('renders submissions view with submissions and simple forms list only', funct
     $response->assertSee('Form');
     $response->assertSee('Submissions');
     $response->assertSee('Form B');
+});
+
+it('dispatches background intelligence generation and handles polling endpoint', function () {
+    \Illuminate\Support\Facades\Cache::flush();
+    \Illuminate\Support\Facades\Bus::fake();
+
+    $user = User::factory()->create();
+
+    // 1. Initial hit should trigger the background job
+    $response = $this->actingAs($user)
+        ->get('/dashboard');
+
+    $response->assertOk();
+    \Illuminate\Support\Facades\Bus::assertDispatched(GenerateIntelligenceDataJob::class);
+
+    // 2. Test the polling endpoint
+    $response = $this->actingAs($user)
+        ->get('/dashboard/intelligence');
+
+    $response->assertOk()
+        ->assertJsonStructure([
+            'status',
+            'aiAlerts',
+            'aiDigest',
+            'alertCacheKey',
+        ])
+        ->assertJson([
+            'status' => 'loading',
+        ]);
 });

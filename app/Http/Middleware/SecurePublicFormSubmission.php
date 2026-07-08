@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use App\Models\Form;
 use Closure;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
@@ -15,6 +14,21 @@ use Throwable;
 
 class SecurePublicFormSubmission
 {
+    private const INPUT_TYPES = [
+        'text',
+        'email',
+        'number',
+        'phone',
+        'date',
+        'url',
+        'textarea',
+        'select',
+        'radio',
+        'checkbox',
+        'file',
+        'image',
+    ];
+
     public function handle(Request $request, Closure $next): Response
     {
         $slug = (string) $request->route('slug', '');
@@ -139,28 +153,13 @@ class SecurePublicFormSubmission
      */
     protected function buildValidationRules(array $fields, array $flatData): array
     {
-        $inputTypes = [
-            'text',
-            'email',
-            'number',
-            'phone',
-            'date',
-            'url',
-            'textarea',
-            'select',
-            'radio',
-            'checkbox',
-            'file',
-            'image',
-        ];
-
         $rules = [];
         $attributes = [];
 
         foreach ($fields as $field) {
             $type = (string) ($field['type'] ?? '');
 
-            if (! in_array($type, $inputTypes, true)) {
+            if (! in_array($type, self::INPUT_TYPES, true)) {
                 continue;
             }
 
@@ -173,27 +172,8 @@ class SecurePublicFormSubmission
             $required = (bool) ($field['required'] ?? false);
 
             // Conditional Logic check: if condition is not met, downgrade required to nullable
-            if (isset($field['conditionalLogic']) && $field['conditionalLogic']) {
-                $logic = $field['conditionalLogic'];
-                $triggerFieldId = $logic['triggerFieldId'] ?? null;
-                $triggerValue = $logic['triggerValue'] ?? null;
-                $action = $logic['action'] ?? 'show';
-
-                if ($triggerFieldId) {
-                    $triggerVal = $flatData[$triggerFieldId] ?? null;
-                    
-                    $conditionMet = false;
-                    if (is_array($triggerVal)) {
-                        $conditionMet = in_array($triggerValue, $triggerVal);
-                    } else {
-                        $conditionMet = (string) $triggerVal === (string) $triggerValue;
-                    }
-
-                    $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
-                    if (! $shouldShow) {
-                        $required = false; // Hidden field is not required
-                    }
-                }
+            if (! $this->shouldDisplayByConditionalLogic($field['conditionalLogic'] ?? null, $flatData)) {
+                $required = false; // Hidden field is not required
             }
 
             $label = (string) ($field['label'] ?? $id);
@@ -250,11 +230,10 @@ class SecurePublicFormSubmission
 
                 continue;
             }
-
             $fieldRules = [$required ? 'required' : 'nullable'];
 
             match ($type) {
-                'email' => $fieldRules[] = 'email:rfc,dns',
+                'email' => $fieldRules[] = 'email',
                 'number' => $fieldRules[] = 'numeric',
                 'url' => $fieldRules[] = 'url',
                 'date' => $fieldRules[] = 'date',
@@ -284,14 +263,13 @@ class SecurePublicFormSubmission
      */
     protected function hasUnexpectedInputs(Request $request, array $fields): bool
     {
-        $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox', 'file', 'image'];
         $allowedKeys = ['_token', '_hp_website', '_hp_time'];
 
         foreach ($fields as $field) {
             $type = (string) ($field['type'] ?? '');
             $id = (string) ($field['id'] ?? '');
 
-            if ($id !== '' && in_array($type, $inputTypes, true)) {
+            if ($id !== '' && in_array($type, self::INPUT_TYPES, true)) {
                 $allowedKeys[] = $id;
             }
         }
@@ -337,6 +315,32 @@ class SecurePublicFormSubmission
             ]);
     }
 
+    /**
+     * @param mixed $logic
+     * @param array<string, mixed> $flatData
+     */
+    private function shouldDisplayByConditionalLogic(mixed $logic, array $flatData): bool
+    {
+        if (! is_array($logic) || $logic === []) {
+            return true;
+        }
+
+        $triggerFieldId = $logic['triggerFieldId'] ?? null;
+        $triggerValue = $logic['triggerValue'] ?? null;
+        $action = $logic['action'] ?? 'show';
+
+        if (! $triggerFieldId) {
+            return true;
+        }
+
+        $value = $flatData[$triggerFieldId] ?? null;
+        $conditionMet = is_array($value)
+            ? in_array($triggerValue, $value)
+            : (string) $value === (string) $triggerValue;
+
+        return $action === 'show' ? $conditionMet : ! $conditionMet;
+    }
+
     private function getVisiblePageIndexes(Form $form, array $progressData): array
     {
         $visible = [];
@@ -350,33 +354,7 @@ class SecurePublicFormSubmission
         }
 
         foreach ($pages as $i => $page) {
-            if (! isset($page['conditionalLogic']) || !$page['conditionalLogic']) {
-                $visible[] = $i;
-                continue;
-            }
-
-            $logic = $page['conditionalLogic'];
-            $triggerFieldId = $logic['triggerFieldId'] ?? null;
-            $triggerValue = $logic['triggerValue'] ?? null;
-            $action = $logic['action'] ?? 'show';
-
-            if (! $triggerFieldId) {
-                $visible[] = $i;
-                continue;
-            }
-
-            $val = $flatData[$triggerFieldId] ?? null;
-            
-            $conditionMet = false;
-            if (is_array($val)) {
-                $conditionMet = in_array($triggerValue, $val);
-            } else {
-                $conditionMet = (string) $val === (string) $triggerValue;
-            }
-
-            $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
-
-            if ($shouldShow) {
+            if ($this->shouldDisplayByConditionalLogic($page['conditionalLogic'] ?? null, $flatData)) {
                 $visible[] = $i;
             }
         }

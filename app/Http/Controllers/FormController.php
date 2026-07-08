@@ -11,6 +11,7 @@ use Illuminate\View\View;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Str;
 use App\Services\ImageUploadService;
+use Illuminate\Http\JsonResponse;
 
 class FormController extends Controller
 {
@@ -57,7 +58,7 @@ class FormController extends Controller
 
     // ── Public form ───────────────────────────────────────────────────────
 
-    public function show(Request $request, string $slug): View|RedirectResponse
+    public function show(Request $request, string $slug): View
     {
         $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
 
@@ -74,6 +75,9 @@ class FormController extends Controller
             }
         }
 
+        // Get all pages and fields
+        $pages = $form->getPages();
+
         // Determine visible page indexes
         $visiblePages = $this->getVisiblePageIndexes($form, $progress);
         
@@ -84,23 +88,12 @@ class FormController extends Controller
 
         $currentPageIdx = $pageNumber - 1;
 
-        // If current page is not visible, redirect to nearest visible page
+        // If current page is not visible, default to the first visible page
         if (!empty($visiblePages) && !in_array($currentPageIdx, $visiblePages)) {
-            $closestIdx = $visiblePages[0];
-            foreach ($visiblePages as $vIdx) {
-                if ($vIdx <= $currentPageIdx) {
-                    $closestIdx = $vIdx;
-                } else {
-                    break;
-                }
-            }
-            return redirect()->route('forms.show', ['slug' => $form->slug, 'page' => $closestIdx + 1]);
+            $currentPageIdx = $visiblePages[0];
         }
 
-        // Get fields of the active page
-        $fields = $form->getPageFields($currentPageIdx);
-
-        return view('forms.show', compact('form', 'fields', 'currentPageIdx', 'visiblePages', 'progress'));
+        return view('forms.show', compact('form', 'pages', 'currentPageIdx', 'visiblePages', 'progress'));
     }
 
     private function processUploadedFiles(Form $form, array $validated): array
@@ -136,7 +129,7 @@ class FormController extends Controller
         return $validated;
     }
 
-    public function savePage(Request $request, string $slug, int $page): RedirectResponse
+    public function savePage(Request $request, string $slug, int $page): RedirectResponse|JsonResponse
     {
         $form = $request->attributes->get('publicForm');
         if (! $form instanceof Form) {
@@ -181,6 +174,12 @@ class FormController extends Controller
         }
 
         if ($nextPageIdx !== null) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'next_page' => $nextPageIdx + 1,
+                ]);
+            }
             return redirect()->route('forms.show', ['slug' => $form->slug, 'page' => $nextPageIdx + 1]);
         }
 
@@ -188,7 +187,7 @@ class FormController extends Controller
         return $this->executeFormSubmission($form, $progress, $request);
     }
 
-    public function submit(Request $request, string $slug): RedirectResponse
+    public function submit(Request $request, string $slug): RedirectResponse|JsonResponse
     {
         $form = $request->attributes->get('publicForm');
 
@@ -213,7 +212,7 @@ class FormController extends Controller
         return $this->executeFormSubmission($form, $progress, $request);
     }
 
-    private function executeFormSubmission(Form $form, array $progress, Request $request): RedirectResponse
+    private function executeFormSubmission(Form $form, array $progress, Request $request): RedirectResponse|JsonResponse
     {
         // Flatten all progress fields
         $flatData = [];
@@ -301,6 +300,13 @@ class FormController extends Controller
 
         $successMessage = $form->settings['success_message'] ?? 'Thank you! Your response has been recorded.';
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $successMessage,
+            ]);
+        }
+
         return redirect()
             ->route('forms.show', $form->slug)
             ->with('success', $successMessage);
@@ -351,5 +357,176 @@ class FormController extends Controller
         }
 
         return $visible;
+    }
+
+    public function manifest(string $slug): JsonResponse
+    {
+        $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
+
+        return response()->json([
+            'name'             => $form->title,
+            'short_name'       => Str::limit($form->title, 12, ''),
+            'description'      => $form->description ?? 'Fill out this form',
+            'start_url'        => route('forms.show', $slug),
+            'scope'            => '/f/' . $slug,
+            'display'          => 'standalone',
+            'theme_color'      => '#0a0a0a',
+            'background_color' => '#ffffff',
+            'icons'            => [
+                [
+                    'src'   => asset('favicon.svg'),
+                    'sizes' => 'any',
+                    'type'  => 'image/svg+xml',
+                ],
+            ],
+        ]);
+    }
+
+    public function offlineSync(Request $request, string $slug): JsonResponse
+    {
+        $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
+
+        $payload = $request->input('fields', []);
+
+        $fields = $form->getFields();
+        $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox'];
+
+        $rules = [];
+        $attributes = [];
+
+        // Determine visible page indexes based on payload to adjust required validation
+        $visiblePages = [];
+        $pages = $form->getPages();
+        foreach ($pages as $i => $page) {
+            if (! isset($page['conditionalLogic']) || !$page['conditionalLogic']) {
+                $visiblePages[] = $i;
+                continue;
+            }
+
+            $logic = $page['conditionalLogic'];
+            $triggerFieldId = $logic['triggerFieldId'] ?? null;
+            $triggerValue = $logic['triggerValue'] ?? null;
+            $action = $logic['action'] ?? 'show';
+
+            if (! $triggerFieldId) {
+                $visiblePages[] = $i;
+                continue;
+            }
+
+            $val = $payload[$triggerFieldId] ?? null;
+            
+            $conditionMet = false;
+            if (is_array($val)) {
+                $conditionMet = in_array($triggerValue, $val);
+            } else {
+                $conditionMet = (string) $val === (string) $triggerValue;
+            }
+
+            $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
+
+            if ($shouldShow) {
+                $visiblePages[] = $i;
+            }
+        }
+
+        foreach ($fields as $field) {
+            $type = (string) ($field['type'] ?? '');
+            if (! in_array($type, $inputTypes, true)) {
+                continue;
+            }
+
+            $id = (string) ($field['id'] ?? '');
+            if ($id === '') {
+                continue;
+            }
+
+            $required = (bool) ($field['required'] ?? false);
+
+            // Find which page this field belongs to
+            $fieldPageIndex = null;
+            foreach ($pages as $pIdx => $p) {
+                foreach ($p['fields'] ?? [] as $f) {
+                    if ($f['id'] === $field['id']) {
+                        $fieldPageIndex = $pIdx;
+                        break 2;
+                    }
+                }
+            }
+
+            // If the field belongs to an inactive page, downgrade required
+            if ($fieldPageIndex !== null && ! in_array($fieldPageIndex, $visiblePages, true)) {
+                $required = false;
+            }
+
+            // Field-level conditional logic check
+            if ($required && isset($field['conditionalLogic']) && $field['conditionalLogic']) {
+                $logic = $field['conditionalLogic'];
+                $triggerFieldId = $logic['triggerFieldId'] ?? null;
+                $triggerValue = $logic['triggerValue'] ?? null;
+                $action = $logic['action'] ?? 'show';
+
+                if ($triggerFieldId) {
+                    $triggerVal = $payload[$triggerFieldId] ?? null;
+                    
+                    $conditionMet = false;
+                    if (is_array($triggerVal)) {
+                        $conditionMet = in_array($triggerValue, $triggerVal);
+                    } else {
+                        $conditionMet = (string) $triggerVal === (string) $triggerValue;
+                    }
+
+                    $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
+                    if (! $shouldShow) {
+                        $required = false;
+                    }
+                }
+            }
+
+            $label = (string) ($field['label'] ?? $id);
+            $attributes[$id] = $label;
+
+            if ($type === 'checkbox') {
+                $rules[$id] = [$required ? 'required' : 'nullable', 'array', 'max:50'];
+                $rules[$id . '.*'] = ['string', 'max:255'];
+                continue;
+            }
+
+            $fieldRules = [$required ? 'required' : 'nullable'];
+
+            match ($type) {
+                'email'  => $fieldRules[] = 'email',
+                'number' => $fieldRules[] = 'numeric',
+                'url'    => $fieldRules[] = 'url',
+                'date'   => $fieldRules[] = 'date',
+                'phone'  => $fieldRules[] = 'regex:/^[0-9+\-\s().]{7,25}$/',
+                default  => null,
+            };
+
+            $fieldRules[] = 'string';
+            $fieldRules[] = $type === 'phone' ? 'max:25' : 'max:65535';
+
+            $rules[$id] = $fieldRules;
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($payload, $rules, [], $attributes);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $validated = $validator->validated();
+
+        Submission::create([
+            'form_id'    => $form->id,
+            'content'    => $validated,
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+        ]);
     }
 }

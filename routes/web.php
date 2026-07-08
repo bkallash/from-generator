@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/intelligence', [DashboardController::class, 'getIntelligenceData'])->name('dashboard.intelligence');
 
     Route::get('/profile', fn () => redirect('/dashboard#profile'))->name('profile');
 
@@ -68,9 +69,14 @@ Route::get('auth/google/callback', [GoogleController::class, 'handleGoogleCallba
 
 // Public form pages
 Route::get('/f/{slug}', [FormController::class, 'show'])->name('forms.show');
+Route::get('/f/{slug}/manifest.json', [FormController::class, 'manifest'])->name('forms.manifest');
+Route::post('/f/{slug}/sync', [FormController::class, 'offlineSync'])
+    ->middleware(['throttle:60,1'])
+    ->name('forms.offline-sync');
 Route::post('/f/{slug}/page/{page}', [FormController::class, 'savePage'])
     ->middleware(['throttle:30,1', SecurePublicFormSubmission::class])
     ->name('forms.save-page');
 Route::post('/f/{slug}', [FormController::class, 'submit'])
     ->middleware(['throttle:10,1', SecurePublicFormSubmission::class])
     ->name('forms.submit');
+

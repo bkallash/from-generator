@@ -6,8 +6,10 @@ use App\Models\Form;
 use App\Models\Submission;
 use App\Models\User;
 use App\Services\AiAnalyticsService;
+use App\Jobs\GenerateIntelligenceDataJob;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -44,9 +46,45 @@ class DashboardController extends Controller
         ], $data));
     }
 
+    /**
+     * Get the JSON intelligence alerts and digest.
+     */
+    public function getIntelligenceData(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $data = Cache::get("user_intelligence_data_{$user->id}");
+
+        if (!$data) {
+            $data = [
+                'status' => 'loading',
+                'aiAlerts' => [],
+                'aiDigest' => 'AI is generating intelligence in the background...',
+                'alertCacheKey' => md5($user->id . '_' . floor(time() / 36000)),
+            ];
+            Cache::put("user_intelligence_data_{$user->id}", $data, 120);
+            GenerateIntelligenceDataJob::dispatch($user);
+        }
+
+        return response()->json($data);
+    }
+
     private function getOverviewData(User $user): array
     {
-        return Cache::remember("dashboard_overview_{$user->id}", self::DASHBOARD_CACHE_TTL, function () use ($user): array {
+        // 1. Fetch background-cached intelligence data (or trigger background generation)
+        $intelData = Cache::get("user_intelligence_data_{$user->id}");
+        if (!$intelData) {
+            $intelData = [
+                'status' => 'loading',
+                'aiAlerts' => [],
+                'aiDigest' => 'AI is generating intelligence in the background...',
+                'alertCacheKey' => md5($user->id . '_' . floor(time() / 36000)),
+            ];
+            Cache::put("user_intelligence_data_{$user->id}", $intelData, 120);
+            GenerateIntelligenceDataJob::dispatch($user);
+        }
+
+        // 2. Load other dashboard overview metrics (cached for 60 seconds)
+        $overviewMetrics = Cache::remember("dashboard_overview_metrics_{$user->id}", self::DASHBOARD_CACHE_TTL, function () use ($user): array {
             $formsBaseQuery = $user->forms();
 
             $formStats = (clone $formsBaseQuery)
@@ -66,15 +104,6 @@ class DashboardController extends Controller
                 ->whereIn('form_id', $formIds)
                 ->where('created_at', '>=', now()->startOfWeek())
                 ->count();
-
-            // AI Alerts
-            $alerts = $this->aiAnalyticsService->detectAnomalies($user);
-            
-            // Sort by severity descending (danger=4, warning=3, info=2, notice=1)
-            usort($alerts, fn($a, $b) => ($b['severity'] ?? 0) <=> ($a['severity'] ?? 0));
-
-            // AI Digest
-            $aiDigest = $this->aiAnalyticsService->generateDashboardDigest($user, $totalForms, $activeForms, $thisWeekSubmissions);
 
             // Form Health Map (submissions in last 7 days and positive sentiment %)
             $healthForms = $user->forms()->select('id', 'title', 'slug', 'is_active')->get();
@@ -126,20 +155,22 @@ class DashboardController extends Controller
                 ];
             }
 
-            // A unique cache key suffix representing the 10-hour cache interval
-            $alertCacheKey = md5($user->id . '_' . floor(time() / 36000));
-
             return [
                 'totalForms'          => $totalForms,
                 'activeForms'         => $activeForms,
                 'totalSubmissions'    => $totalSubmissions,
                 'thisWeekSubmissions' => $thisWeekSubmissions,
-                'aiAlerts'            => $alerts,
-                'aiDigest'            => $aiDigest,
                 'formHealthMap'       => $formHealthMap,
-                'alertCacheKey'       => $alertCacheKey,
             ];
         });
+
+        // 3. Return combined payload
+        return array_merge($overviewMetrics, [
+            'alertsStatus'  => $intelData['status'] ?? 'ready',
+            'aiAlerts'      => $intelData['aiAlerts'] ?? [],
+            'aiDigest'      => $intelData['aiDigest'] ?? '',
+            'alertCacheKey' => $intelData['alertCacheKey'] ?? md5($user->id . '_' . floor(time() / 36000)),
+        ]);
     }
 
     /**

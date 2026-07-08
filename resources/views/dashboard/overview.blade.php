@@ -102,8 +102,11 @@
     <!-- Intelligence Section -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6"
          x-data="{
-             cacheKey: '{{ $alertCacheKey }}',
-             dismissedAlerts: JSON.parse(localStorage.getItem('dismissed_ai_alerts_' + '{{ $alertCacheKey }}') || '[]'),
+             status: {{ json_encode($alertsStatus) }},
+             aiAlerts: {{ json_encode($aiAlerts) }},
+             aiDigest: {{ json_encode($aiDigest) }},
+             cacheKey: {{ json_encode($alertCacheKey) }},
+             dismissedAlerts: JSON.parse(localStorage.getItem('dismissed_ai_alerts_' + {{ json_encode($alertCacheKey) }}) || '[]'),
              dismissAlert(type, formId, title) {
                  const key = `${type}_${formId}_${title}`;
                  if (!this.dismissedAlerts.includes(key)) {
@@ -117,14 +120,35 @@
              },
              get visibleAlertsCount() {
                  let count = 0;
-                 @foreach ($aiAlerts as $alert)
-                     if (!this.isDismissed('{{ $alert['type'] }}', '{{ $alert['form_id'] }}', '{{ addslashes($alert['title']) }}')) {
+                 this.aiAlerts.forEach(alert => {
+                     if (!this.isDismissed(alert.type, alert.form_id, alert.title)) {
                          count++;
                      }
-                 @endforeach
+                 });
                  return count;
+             },
+             pollIntelligence() {
+                 if (this.status !== 'loading') return;
+                 const interval = setInterval(async () => {
+                     try {
+                         const response = await fetch('/dashboard/intelligence');
+                         if (response.ok) {
+                             const data = await response.json();
+                             if (data.status === 'ready') {
+                                 this.aiAlerts = data.aiAlerts;
+                                 this.aiDigest = data.aiDigest;
+                                 this.cacheKey = data.alertCacheKey;
+                                 this.status = 'ready';
+                                 clearInterval(interval);
+                             }
+                         }
+                     } catch (e) {
+                         console.error('Error polling intelligence:', e);
+                     }
+                 }, 3000);
              }
-         }">
+         }"
+         x-init="pollIntelligence()">
         <!-- Left Column: AI Alerts Feed -->
         <div class="lg:col-span-2 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 p-8 transition-colors duration-300 flex flex-col justify-between">
             <div>
@@ -137,79 +161,96 @@
 
                 {{-- Alert Cards --}}
                 <div class="space-y-4">
-                    @foreach ($aiAlerts as $alert)
-                        @php
-                            $bgColor = 'bg-neutral-50 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200';
-                            $iconColor = 'text-neutral-500';
-                            $stripeColor = 'bg-neutral-400';
-                            
-                            if ($alert['type'] === 'danger') {
-                                $bgColor = 'bg-rose-50/50 dark:bg-rose-950/10 border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-100';
-                                $iconColor = 'text-rose-500';
-                                $stripeColor = 'bg-rose-500';
-                            } elseif ($alert['type'] === 'warning') {
-                                $bgColor = 'bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/50 text-amber-950 dark:text-amber-100';
-                                $iconColor = 'text-amber-600 dark:text-amber-500';
-                                $stripeColor = 'bg-amber-500';
-                            } elseif ($alert['type'] === 'info') {
-                                $bgColor = 'bg-violet-50/50 dark:bg-violet-950/10 border-violet-200 dark:border-violet-900/50 text-violet-950 dark:text-violet-100';
-                                $iconColor = 'text-violet-600 dark:text-violet-500';
-                                $stripeColor = 'bg-violet-500';
-                            } elseif ($alert['type'] === 'notice') {
-                                $bgColor = 'bg-blue-50/50 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900/50 text-blue-950 dark:text-blue-100';
-                                $iconColor = 'text-blue-600 dark:text-blue-500';
-                                $stripeColor = 'bg-blue-500';
-                            }
-                        @endphp
-
-                        <div x-show="!isDismissed('{{ $alert['type'] }}', '{{ $alert['form_id'] }}', '{{ addslashes($alert['title']) }}')"
-                             x-transition:leave="transition ease-in duration-300 transform opacity-0 scale-95"
-                             class="relative overflow-hidden border p-4 transition-all duration-300 {{ $bgColor }} flex items-start gap-3.5 group">
-                            {{-- Left accent stripe --}}
-                            <div class="absolute top-0 left-0 w-[3px] h-full {{ $stripeColor }}"></div>
-
-                            {{-- Icon --}}
-                            <div class="shrink-0 mt-0.5 {{ $iconColor }}">
-                                @if ($alert['type'] === 'danger')
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                @elseif ($alert['type'] === 'warning')
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                    </svg>
-                                @elseif ($alert['type'] === 'info')
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                @else
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                                    </svg>
-                                @endif
-                            </div>
-
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center justify-between gap-4">
-                                    <p class="text-xs font-semibold uppercase tracking-wider opacity-90">{{ $alert['title'] }}</p>
-                                    <span class="text-[10px] opacity-60 font-mono">AI Intelligence Alert</span>
+                    {{-- Skeleton Loader for Background Job --}}
+                    <template x-if="status === 'loading'">
+                        <div class="space-y-4 animate-pulse">
+                            <div class="p-5 border border-neutral-100 dark:border-neutral-900 bg-neutral-50 dark:bg-neutral-900/30 flex flex-col gap-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="h-3 w-1/4 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
+                                    <div class="h-2 w-16 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
                                 </div>
-                                <p class="text-sm mt-1 leading-relaxed font-light">{{ $alert['message'] }}</p>
+                                <div class="h-4 w-3/4 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
+                                <div class="h-3 w-1/2 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
                             </div>
-
-                            {{-- Dismiss button --}}
-                            <button @click="dismissAlert('{{ $alert['type'] }}', '{{ $alert['form_id'] }}', '{{ addslashes($alert['title']) }}')"
-                                    class="shrink-0 text-neutral-400 dark:text-neutral-600 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors self-start p-1"
-                                    aria-label="Dismiss alert">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
+                            <div class="p-5 border border-neutral-100 dark:border-neutral-900 bg-neutral-50 dark:bg-neutral-900/30 flex flex-col gap-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="h-3 w-1/3 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
+                                    <div class="h-2 w-16 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
+                                </div>
+                                <div class="h-4 w-5/6 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
+                                <div class="h-3 w-2/3 bg-neutral-200 dark:bg-neutral-800 rounded"></div>
+                            </div>
                         </div>
-                    @endforeach
+                    </template>
+
+                    {{-- Dynamic AI Alert Cards --}}
+                    <template x-if="status === 'ready'">
+                        <div class="space-y-4">
+                            <template x-for="alert in aiAlerts" :key="alert.type + '_' + alert.form_id + '_' + alert.title">
+                                <div x-show="!isDismissed(alert.type, alert.form_id, alert.title)"
+                                     x-transition:leave="transition ease-in duration-300 transform opacity-0 scale-95"
+                                     :class="{
+                                         'bg-rose-50/50 dark:bg-rose-950/10 border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-100': alert.type === 'danger',
+                                         'bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900/50 text-amber-950 dark:text-amber-100': alert.type === 'warning',
+                                         'bg-violet-50/50 dark:bg-violet-950/10 border-violet-200 dark:border-violet-900/50 text-violet-950 dark:text-violet-100': alert.type === 'info',
+                                         'bg-blue-50/50 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900/50 text-blue-950 dark:text-blue-100': alert.type === 'notice'
+                                     }"
+                                     class="relative overflow-hidden border p-4 transition-all duration-300 flex items-start gap-3.5 group">
+                                     {{-- Left accent stripe --}}
+                                     <div :class="{
+                                         'bg-rose-500': alert.type === 'danger',
+                                         'bg-amber-500': alert.type === 'warning',
+                                         'bg-violet-500': alert.type === 'info',
+                                         'bg-blue-500': alert.type === 'notice'
+                                     }" class="absolute top-0 left-0 w-[3px] h-full"></div>
+
+                                     {{-- Icon --}}
+                                     <div :class="{
+                                         'text-rose-500': alert.type === 'danger',
+                                         'text-amber-600 dark:text-amber-500': alert.type === 'warning',
+                                         'text-violet-600 dark:text-violet-500': alert.type === 'info',
+                                         'text-blue-600 dark:text-blue-500': alert.type === 'notice'
+                                     }" class="shrink-0 mt-0.5">
+                                         <template x-if="alert.type === 'danger' || alert.type === 'warning'">
+                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                             </svg>
+                                         </template>
+                                         <template x-if="alert.type === 'info'">
+                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                             </svg>
+                                         </template>
+                                         <template x-if="alert.type === 'notice'">
+                                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                             </svg>
+                                         </template>
+                                     </div>
+
+                                     <div class="flex-1 min-w-0">
+                                         <div class="flex items-center justify-between gap-4">
+                                             <p class="text-xs font-semibold uppercase tracking-wider opacity-90" x-text="alert.title"></p>
+                                             <span class="text-[10px] opacity-60 font-mono">AI Intelligence Alert</span>
+                                         </div>
+                                         <p class="text-sm mt-1 leading-relaxed font-light" x-text="alert.message"></p>
+                                     </div>
+
+                                     {{-- Dismiss button --}}
+                                     <button @click="dismissAlert(alert.type, alert.form_id, alert.title)"
+                                             class="shrink-0 text-neutral-400 dark:text-neutral-600 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors self-start p-1"
+                                             aria-label="Dismiss alert">
+                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                         </svg>
+                                     </button>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
 
                     {{-- Empty/Digest State --}}
-                    <div x-show="visibleAlertsCount === 0" class="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40 p-6 flex items-start gap-4 transition-all duration-300">
+                    <div x-show="status === 'ready' && visibleAlertsCount === 0" class="border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40 p-6 flex items-start gap-4 transition-all duration-300">
                         <div class="shrink-0 text-emerald-500 mt-0.5">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -217,8 +258,7 @@
                         </div>
                         <div>
                             <h4 class="text-sm font-semibold text-neutral-900 dark:text-neutral-100">All Systems Clear</h4>
-                            <p class="text-sm text-neutral-600 dark:text-neutral-400 mt-1 font-light leading-relaxed">
-                                {{ $aiDigest }}
+                            <p class="text-sm text-neutral-600 dark:text-neutral-400 mt-1 font-light leading-relaxed" x-text="aiDigest">
                             </p>
                         </div>
                     </div>
