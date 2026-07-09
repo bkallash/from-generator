@@ -14,3 +14,60 @@
     --font-sans: "Inter", "system-ui", "-apple-system", "sans-serif";
     --letter-spacing-tighter: "-0.05em";
 }
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────────
+   Thin, neutral-palette scrollbar applied globally.
+   Webkit (Chrome / Edge / Safari) + Firefox covered.
+   Dark mode: lighter thumb on dark track.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #d4d4d4 transparent;
+}
+
+/* Webkit */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #d4d4d4; /* neutral-300 */
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: #a3a3a3; /* neutral-400 */
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Dark mode overrides */
+.dark * {
+    scrollbar-color: #404040 transparent; /* neutral-700 */
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background-color: #404040; /* neutral-700 */
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background-color: #525252; /* neutral-600 */
+}
+
+/* Suppress transitions/animations temporarily to prevent theme flashes */
+.no-transitions,
+.no-transitions * {
+    transition: none !important;
+    animation: none !important;
+}

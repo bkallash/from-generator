@@ -250,6 +250,8 @@ class Analytics extends Component
                         arsort($fieldData['emotion_tally']);
                         $fieldData['top_emotions'] = array_slice(array_keys($fieldData['emotion_tally']), 0, 3);
                     }
+                    unset($fieldData);
+                    unset($stat);
                     
                     // Filter out fields that have no sentiment data at all to keep UI clean
                     $sentimentStatsByField = array_filter($sentimentStatsByField, fn($f) => $f['total'] > 0);

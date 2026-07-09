@@ -386,10 +386,13 @@ class FormController extends Controller
     {
         $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
 
-        $payload = $request->input('fields', []);
+        $payload = array_merge(
+            $request->input('fields', []),
+            $request->file('fields', [])
+        );
 
         $fields = $form->getFields();
-        $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox'];
+        $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox', 'file', 'image'];
 
         $rules = [];
         $attributes = [];
@@ -491,6 +494,44 @@ class FormController extends Controller
                 continue;
             }
 
+            if ($type === 'image') {
+                $rules[$id] = [
+                    $required ? 'required' : 'nullable',
+                    'image',
+                    'max:6144',
+                ];
+                continue;
+            }
+
+            if ($type === 'file') {
+                $rules[$id] = [
+                    $required ? 'required' : 'nullable',
+                    'file',
+                    'max:10240',
+                    function (string $attribute, mixed $value, \Closure $fail): void {
+                        if (! $value instanceof \Illuminate\Http\UploadedFile) {
+                            return;
+                        }
+
+                        $blockedMimeTypes = [
+                            'text/html',
+                            'application/xhtml+xml',
+                            'image/svg+xml',
+                        ];
+
+                        $blockedExtensions = ['html', 'htm', 'xhtml', 'svg', 'svgz'];
+
+                        $detectedMime = strtolower((string) $value->getMimeType());
+                        $extension = strtolower((string) $value->getClientOriginalExtension());
+
+                        if (in_array($detectedMime, $blockedMimeTypes, true) || in_array($extension, $blockedExtensions, true)) {
+                            $fail('This file type is not allowed.');
+                        }
+                    },
+                ];
+                continue;
+            }
+
             $fieldRules = [$required ? 'required' : 'nullable'];
 
             match ($type) {
@@ -518,6 +559,7 @@ class FormController extends Controller
         }
 
         $validated = $validator->validated();
+        $validated = $this->processUploadedFiles($form, $validated);
 
         Submission::create([
             'form_id'    => $form->id,

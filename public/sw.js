@@ -1,4 +1,4 @@
-const CACHE_NAME = 'form-pwa-cache-v3';
+const CACHE_NAME = 'form-pwa-cache-v4';
 const OFFLINE_URL = '/offline.html';
 
 // Install event: cache the offline fallback page and skip waiting immediately
@@ -272,13 +272,25 @@ async function syncSubmissions() {
         try {
             await updateSubmissionStatus(db, submission.id, 'syncing', submission.retries || 0);
 
+            const formData = new FormData();
+            for (const [key, value] of Object.entries(submission.fields)) {
+                if (Array.isArray(value)) {
+                    value.forEach(v => formData.append(`fields[${key}][]`, v));
+                } else if (value instanceof File) {
+                    formData.append(`fields[${key}]`, value);
+                } else if (value instanceof Blob) {
+                    formData.append(`fields[${key}]`, value, value.name || 'blob');
+                } else if (value !== null && value !== undefined) {
+                    formData.append(`fields[${key}]`, value);
+                }
+            }
+
             const response = await fetch(`/f/${submission.slug}/sync`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Accept': 'application/json',
                 },
-                body: JSON.stringify({ fields: submission.fields }),
+                body: formData,
             });
 
             if (response.ok) {

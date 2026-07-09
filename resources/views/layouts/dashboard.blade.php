@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="transition-colors duration-300">
+<html lang="en" wire:ignore.self>
 
 <head>
     <meta charset="UTF-8">
@@ -7,7 +7,7 @@
     <title>@yield('title', 'Dashboard - Form Generator')</title>
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
-    <link rel="manifest" href="{{ asset('site.webmanifest') }}">
+
     {{-- Apply dark mode immediately to prevent flash on wire:navigate --}}
     <script>
         (function() {

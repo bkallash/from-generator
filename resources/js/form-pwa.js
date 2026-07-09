@@ -4,7 +4,6 @@ let db;
 let currentSlug = '';
 let currentForm = null;
 let editingId = null;
-let installPrompt = null;
 let isPageSyncing = false;
 
 // Initialize IndexedDB database for local offline cache
@@ -47,16 +46,6 @@ export function registerSW() {
         });
     }
 
-    // Capture PWA installation prompt
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        installPrompt = e;
-        const installBtn = document.getElementById('pwa-install-btn');
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-        if (installBtn && !isStandalone) {
-            installBtn.classList.remove('hidden');
-        }
-    });
 }
 
 // Pre-cache primary page and assets so application loads instantly offline
@@ -269,7 +258,9 @@ function getPageFormData(formEl, pageIdx) {
             } else if (input.type === 'checkbox') {
                 if (input.checked) data[key] = input.value;
             } else if (input.type === 'file') {
-                // skip file data serialization to plain JSON objects
+                if (input.files && input.files.length > 0) {
+                    data[key] = input.files[0];
+                }
             } else {
                 data[key] = input.value;
             }
@@ -296,6 +287,12 @@ function populateForm(formEl, fields) {
             inputs.forEach(input => {
                 input.checked = vals.includes(input.value);
             });
+        } else if (first.type === 'file') {
+            if (value instanceof File) {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(value);
+                first.files = dataTransfer.files;
+            }
         } else if (first.tagName === 'SELECT') {
             first.value = value;
         } else {
@@ -522,14 +519,24 @@ export async function syncAll() {
             }
 
             try {
+                const formData = new FormData();
+                for (const [key, value] of Object.entries(entry.fields)) {
+                    if (Array.isArray(value)) {
+                        value.forEach(v => formData.append(`fields[${key}][]`, v));
+                    } else if (value instanceof File) {
+                        formData.append(`fields[${key}]`, value);
+                    } else if (value !== null && value !== undefined) {
+                        formData.append(`fields[${key}]`, value);
+                    }
+                }
+
                 const res = await fetch(`/f/${entry.slug}/sync`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
                         'Accept': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                     },
-                    body: JSON.stringify({ fields: entry.fields })
+                    body: formData
                 });
 
                 if (res.ok) {
@@ -1120,15 +1127,6 @@ function updateOfflineStatus() {
 function runInitialization() {
     const slug = window.formSlug;
     const formEl = document.getElementById('public-form');
-    
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    if (isStandalone) {
-        const installBtn = document.getElementById('pwa-install-btn');
-        if (installBtn) {
-            installBtn.classList.add('hidden');
-            installBtn.style.display = 'none';
-        }
-    }
 
     if (slug && formEl) {
         registerSW();

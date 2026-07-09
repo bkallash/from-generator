@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="transition-colors duration-300">
+<html lang="en" wire:ignore.self>
 
 <head>
     <meta charset="UTF-8">
