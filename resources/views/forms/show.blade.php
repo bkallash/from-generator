@@ -371,10 +371,6 @@
                                                     @error($field['id'])
                                                         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                                     @enderror
-                                                    <p
-                                                        class="file-offline-warning hidden mt-1.5 text-xs text-amber-600 dark:text-amber-500 font-medium">
-                                                        ⚠ Image upload is not available offline (this field will be skipped).
-                                                    </p>
                                                 </div>
                                             @elseif ($field['type'] === 'file')
                                                 <div>
@@ -391,10 +387,6 @@
                                                     @error($field['id'])
                                                         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                                     @enderror
-                                                    <p
-                                                        class="file-offline-warning hidden mt-1.5 text-xs text-amber-600 dark:text-amber-500 font-medium">
-                                                        ⚠ File upload is not available offline (this field will be skipped).
-                                                    </p>
                                                 </div>
                                             @endif
                                         </div>

@@ -358,9 +358,17 @@ function createSubmissionBox(entry) {
     const previewValues = [];
     let count = 0;
     for (const val of Object.values(entry.fields)) {
-        if (val && typeof val === 'string' && val.trim() !== '') {
-            previewValues.push(val);
-            count++;
+        if (val) {
+            if (typeof val === 'string' && val.trim() !== '') {
+                previewValues.push(val);
+                count++;
+            } else if (val instanceof File) {
+                previewValues.push(val.name);
+                count++;
+            } else if (val instanceof Blob) {
+                previewValues.push(val.name || 'File Upload');
+                count++;
+            }
             if (count >= 2) break;
         }
     }
@@ -1109,16 +1117,13 @@ export async function init(slug, formEl) {
 // Update connectivity status visual warnings
 function updateOfflineStatus() {
     const banner = document.getElementById('offline-banner');
-    const fileWarnings = document.querySelectorAll('.file-offline-warning');
     const syncStatus = document.getElementById('sync-status');
 
     if (navigator.onLine) {
         if (banner) banner.classList.add('hidden');
-        fileWarnings.forEach(w => w.classList.add('hidden'));
         if (syncStatus) syncStatus.textContent = 'Connected';
     } else {
         if (banner) banner.classList.remove('hidden');
-        fileWarnings.forEach(w => w.classList.remove('hidden'));
         if (syncStatus) syncStatus.textContent = 'Offline — submissions saved locally';
     }
 }
