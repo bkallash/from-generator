@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\AnalyzeSubmissionSentiment;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -25,7 +26,7 @@ class Submission extends Model
     {
         static::created(function (Submission $submission): void {
             $submission->clearDashboardCaches();
-            dispatch(new \App\Jobs\AnalyzeSubmissionSentiment($submission));
+            dispatch(new AnalyzeSubmissionSentiment($submission));
         });
 
         static::saved(function (Submission $submission): void {
@@ -50,17 +51,6 @@ class Submission extends Model
                     }
                 } catch (Throwable) {
                     // Ignore
-                }
-
-                // Check local/public for legacy files
-                foreach (['local', 'public'] as $disk) {
-                    try {
-                        if (Storage::disk($disk)->exists($path)) {
-                            Storage::disk($disk)->delete($path);
-                        }
-                    } catch (Throwable) {
-                        continue;
-                    }
                 }
             }
         });
@@ -89,8 +79,7 @@ class Submission extends Model
 
         array_walk_recursive($content, function ($value) use (&$paths): void {
             if (is_string($value)) {
-                // Legacy path starts with submissions/
-                // New paths look like: {userId}/{formId}/{fieldId}/{uuid}.webp (or similar)
+                // paths look like: {userId}/{formId}/{fieldId}/{uuid}.webp (or similar)
                 if (str_starts_with($value, 'submissions/') || preg_match('/^\d+\/\d+\/field_/', $value)) {
                     $paths[] = $value;
                 }

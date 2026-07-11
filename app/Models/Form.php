@@ -94,6 +94,54 @@ class Form extends Model
         return $fields;
     }
 
+    /**
+     * Determine which page indexes are visible based on conditional logic and current progress.
+     *
+     * @param array<int, array<string, mixed>> $progressData  Flat or page-keyed progress data.
+     * @return array<int, int>
+     */
+    public function getVisiblePageIndexes(array $progressData): array
+    {
+        $visible = [];
+        $pages = $this->getPages();
+
+        $flatData = $progressData;
+
+        foreach ($pages as $i => $page) {
+            if (! isset($page['conditionalLogic']) || ! $page['conditionalLogic']) {
+                $visible[] = $i;
+                continue;
+            }
+
+            $logic = $page['conditionalLogic'];
+            $triggerFieldId = $logic['triggerFieldId'] ?? null;
+            $triggerValue = $logic['triggerValue'] ?? null;
+            $action = $logic['action'] ?? 'show';
+
+            if (! $triggerFieldId) {
+                $visible[] = $i;
+                continue;
+            }
+
+            $val = $flatData[$triggerFieldId] ?? null;
+
+            $conditionMet = false;
+            if (is_array($val)) {
+                $conditionMet = in_array($triggerValue, $val);
+            } else {
+                $conditionMet = (string) $val === (string) $triggerValue;
+            }
+
+            $shouldShow = ($action === 'show') ? $conditionMet : ! $conditionMet;
+
+            if ($shouldShow) {
+                $visible[] = $i;
+            }
+        }
+
+        return $visible;
+    }
+
     public function drafts()
     {
         return $this->hasMany(FormDraft::class);

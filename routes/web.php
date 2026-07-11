@@ -74,9 +74,9 @@ Route::get('/f/{slug}/manifest.json', [FormController::class, 'manifest'])->name
 Route::post('/f/{slug}/sync', [FormController::class, 'offlineSync'])
     ->middleware(['throttle:60,1'])
     ->name('forms.offline-sync');
-Route::post('/f/{slug}/page/{page}', [FormController::class, 'savePage'])
-    ->middleware(['throttle:30,1', SecurePublicFormSubmission::class])
-    ->name('forms.save-page');
+Route::post('/f/{slug}/draft', [FormController::class, 'saveDraft'])
+    ->middleware(['throttle:30,1'])
+    ->name('forms.save-draft');
 Route::post('/f/{slug}', [FormController::class, 'submit'])
     ->middleware(['throttle:10,1', SecurePublicFormSubmission::class])
     ->name('forms.submit');

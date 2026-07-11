@@ -62,36 +62,19 @@ class FormController extends Controller
     {
         $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
 
-        // Restore progress from DB draft if session is empty and cookie exists
-        $progress = session()->get("form_progress.{$form->id}", []);
-        if (empty($progress)) {
-            $token = $request->cookie("form_draft_{$form->id}");
-            if ($token) {
-                $draft = FormDraft::where('form_id', $form->id)->where('token', $token)->first();
-                if ($draft) {
-                    $progress = $draft->data ?? [];
-                    session()->put("form_progress.{$form->id}", $progress);
-                }
+        // Restore progress from DB draft via cookie token
+        $progress = [];
+        $token = $request->cookie("form_draft_{$form->id}");
+        if ($token) {
+            $draft = FormDraft::where('form_id', $form->id)->where('token', $token)->first();
+            if ($draft) {
+                $progress = $draft->data ?? [];
             }
         }
 
-        // Get all pages and fields
         $pages = $form->getPages();
-
-        // Determine visible page indexes
-        $visiblePages = $this->getVisiblePageIndexes($form, $progress);
-        
-        $pageNumber = (int) $request->query('page', 1);
-        if ($pageNumber < 1) {
-            $pageNumber = 1;
-        }
-
-        $currentPageIdx = $pageNumber - 1;
-
-        // If current page is not visible, default to the first visible page
-        if (!empty($visiblePages) && !in_array($currentPageIdx, $visiblePages)) {
-            $currentPageIdx = $visiblePages[0];
-        }
+        $visiblePages = $form->getVisiblePageIndexes($progress);
+        $currentPageIdx = 0;
 
         return view('forms.show', compact('form', 'pages', 'currentPageIdx', 'visiblePages', 'progress'));
     }
@@ -129,62 +112,35 @@ class FormController extends Controller
         return $validated;
     }
 
-    public function savePage(Request $request, string $slug, int $page): RedirectResponse|JsonResponse
+    public function saveDraft(Request $request, string $slug): JsonResponse
     {
-        $form = $request->attributes->get('publicForm');
-        if (! $form instanceof Form) {
-            $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
-        }
+        $form = Form::where('slug', $slug)->where('is_active', true)->firstOrFail();
 
-        $pageIndex = $page - 1;
-        $validated = (array) $request->attributes->get('validatedPublicSubmission', []);
-        $validated = $this->processUploadedFiles($form, $validated);
+        $data = $request->input('data', []);
+        $currentPage = (int) $request->input('current_page', 0);
 
-        // Save progress to session
-        $progress = session()->get("form_progress.{$form->id}", []);
-        $progress[$pageIndex] = $validated;
-        session()->put("form_progress.{$form->id}", $progress);
-
-        // Get/Create draft token cookie
+        // Get or create draft token via cookie
         $token = $request->cookie("form_draft_{$form->id}");
         if (! $token) {
             $token = (string) Str::uuid();
             Cookie::queue(Cookie::forever("form_draft_{$form->id}", $token));
         }
 
-        // Save progress to database draft
         FormDraft::updateOrCreate(
             ['form_id' => $form->id, 'token' => $token],
             [
-                'data' => $progress,
-                'current_page' => $pageIndex,
+                'data' => $data,
+                'current_page' => $currentPage,
                 'ip_address' => $request->ip(),
             ]
         );
 
-        // Determine next visible page index
-        $visiblePages = $this->getVisiblePageIndexes($form, $progress);
-        
-        $nextPageIdx = null;
-        foreach ($visiblePages as $vIdx) {
-            if ($vIdx > $pageIndex) {
-                $nextPageIdx = $vIdx;
-                break;
-            }
-        }
-
-        if ($nextPageIdx !== null) {
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'next_page' => $nextPageIdx + 1,
-                ]);
-            }
-            return redirect()->route('forms.show', ['slug' => $form->slug, 'page' => $nextPageIdx + 1]);
-        }
-
-        // No more visible pages! Execute final form submission.
-        return $this->executeFormSubmission($form, $progress, $request);
+        // Return token so the client can attach it on final submit even if the
+        // Set-Cookie from this response has not been applied yet (race) or cookies are restricted.
+        return response()->json([
+            'success' => true,
+            'token' => $token,
+        ]);
     }
 
     public function submit(Request $request, string $slug): RedirectResponse|JsonResponse
@@ -198,37 +154,36 @@ class FormController extends Controller
         $validated = (array) $request->attributes->get('validatedPublicSubmission', []);
         $validated = $this->processUploadedFiles($form, $validated);
 
-        // Read previous progress
-        $progress = session()->get("form_progress.{$form->id}", []);
-        
-        // Merge last page data
-        $pageCount = $form->getPageCount();
-        if ($pageCount > 1) {
-            $progress[$pageCount - 1] = $validated;
-        } else {
-            $progress[0] = $validated;
-        }
+        // Read previous progress from DB draft (flat format). Prefer token resolved
+        // by middleware (cookie / header / body) so final submit works without a cookie race.
+        $draftData = [];
+        $token = $request->attributes->get('publicFormDraftToken')
+            ?: $request->cookie("form_draft_{$form->id}")
+            ?: $request->header('X-Form-Draft-Token')
+            ?: $request->input('_draft_token');
 
-        return $this->executeFormSubmission($form, $progress, $request);
-    }
-
-    private function executeFormSubmission(Form $form, array $progress, Request $request): RedirectResponse|JsonResponse
-    {
-        // Flatten all progress fields
-        $flatData = [];
-        foreach ($progress as $pageData) {
-            if (is_array($pageData)) {
-                $flatData = array_merge($flatData, $pageData);
+        if (is_string($token) && $token !== '') {
+            $draft = FormDraft::where('form_id', $form->id)->where('token', $token)->first();
+            if ($draft) {
+                $draftData = $draft->data ?? [];
             }
         }
 
+        // Merge draft progress with final page's validated data
+        $mergedData = array_merge($draftData, $validated);
+
+        return $this->executeFormSubmission($form, $mergedData, $request, is_string($token) ? $token : null);
+    }
+
+    private function executeFormSubmission(Form $form, array $flatData, Request $request, ?string $draftToken = null): RedirectResponse|JsonResponse
+    {
         $fields = $form->getFields();
         $inputTypes = ['text', 'email', 'number', 'phone', 'date', 'url', 'textarea', 'select', 'radio', 'checkbox', 'file', 'image'];
 
         $content = [];
 
         // Determine visible page indexes to filter out inactive pages/fields
-        $visiblePages = $this->getVisiblePageIndexes($form, $progress);
+        $visiblePages = $form->getVisiblePageIndexes($flatData);
 
         foreach ($fields as $field) {
             if (! in_array($field['type'], $inputTypes)) {
@@ -289,13 +244,16 @@ class FormController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        // Clean up draft and progress
-        $token = $request->cookie("form_draft_{$form->id}");
-        if ($token) {
+        // Clean up draft (token may come from cookie, header, or body)
+        $token = $draftToken
+            ?: $request->cookie("form_draft_{$form->id}")
+            ?: $request->header('X-Form-Draft-Token')
+            ?: $request->input('_draft_token');
+
+        if (is_string($token) && $token !== '') {
             FormDraft::where('form_id', $form->id)->where('token', $token)->delete();
         }
-        
-        session()->forget("form_progress.{$form->id}");
+
         Cookie::queue(Cookie::forget("form_draft_{$form->id}"));
 
         $successMessage = $form->settings['success_message'] ?? 'Thank you! Your response has been recorded.';
@@ -312,52 +270,7 @@ class FormController extends Controller
             ->with('success', $successMessage);
     }
 
-    private function getVisiblePageIndexes(Form $form, array $progressData): array
-    {
-        $visible = [];
-        $pages = $form->getPages();
 
-        $flatData = [];
-        foreach ($progressData as $pageData) {
-            if (is_array($pageData)) {
-                $flatData = array_merge($flatData, $pageData);
-            }
-        }
-
-        foreach ($pages as $i => $page) {
-            if (! isset($page['conditionalLogic']) || !$page['conditionalLogic']) {
-                $visible[] = $i;
-                continue;
-            }
-
-            $logic = $page['conditionalLogic'];
-            $triggerFieldId = $logic['triggerFieldId'] ?? null;
-            $triggerValue = $logic['triggerValue'] ?? null;
-            $action = $logic['action'] ?? 'show';
-
-            if (! $triggerFieldId) {
-                $visible[] = $i;
-                continue;
-            }
-
-            $val = $flatData[$triggerFieldId] ?? null;
-            
-            $conditionMet = false;
-            if (is_array($val)) {
-                $conditionMet = in_array($triggerValue, $val);
-            } else {
-                $conditionMet = (string) $val === (string) $triggerValue;
-            }
-
-            $shouldShow = ($action === 'show') ? $conditionMet : !$conditionMet;
-
-            if ($shouldShow) {
-                $visible[] = $i;
-            }
-        }
-
-        return $visible;
-    }
 
     public function manifest(string $slug): JsonResponse
     {

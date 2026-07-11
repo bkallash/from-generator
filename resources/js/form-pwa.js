@@ -5,6 +5,10 @@ let currentSlug = '';
 let currentForm = null;
 let editingId = null;
 let isPageSyncing = false;
+let autoSaveInterval = null;
+let isDirty = false;
+/** Server draft token returned from /draft — sent on final submit as a cookie race fallback */
+let draftToken = null;
 
 // Initialize IndexedDB database for local offline cache
 function initDb() {
@@ -71,21 +75,18 @@ function warmSwCache(registration) {
     });
 }
 
-// ── Offline multi-page draft (localStorage fallback) ───────────────────────
+// ── Offline multi-page draft (localStorage fallback) ─────────────────────
 const DRAFT_KEY = 'pwa_form_draft_';
 
-function saveOfflineDraftPage(slug, pageIdx, fields) {
+function saveOfflineDraft(slug, fields) {
     try {
-        const raw = localStorage.getItem(DRAFT_KEY + slug);
-        const draft = raw ? JSON.parse(raw) : {};
-        draft[pageIdx] = fields;
-        localStorage.setItem(DRAFT_KEY + slug, JSON.stringify(draft));
+        localStorage.setItem(DRAFT_KEY + slug, JSON.stringify(fields));
     } catch (e) {
-        console.warn('[PWA] Could not save draft page to localStorage', e);
+        console.warn('[PWA] Could not save draft to localStorage', e);
     }
 }
 
-function getOfflineDraftPages(slug) {
+function getOfflineDraft(slug) {
     try {
         const raw = localStorage.getItem(DRAFT_KEY + slug);
         return raw ? JSON.parse(raw) : {};
@@ -94,10 +95,185 @@ function getOfflineDraftPages(slug) {
     }
 }
 
-function clearOfflineDraftPages(slug) {
+function clearOfflineDraft(slug) {
     try {
         localStorage.removeItem(DRAFT_KEY + slug);
     } catch (e) {}
+}
+
+// ── Auto-save helpers ───────────────────────────────────────────────────
+
+// Collect all field data across all pages into a flat map
+function getAllFormData(formEl) {
+    const data = {};
+    const inputs = formEl.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+        if (!input.name) return;
+        const key = input.name;
+
+        // Skip system fields
+        if (['_token', '_hp_website', '_hp_time', '_method'].includes(key)) return;
+
+        // Skip inputs hidden by conditional logic
+        const wrapper = input.closest('.field-wrapper');
+        if (wrapper && wrapper.style.display === 'none') return;
+
+        if (key.endsWith('[]')) {
+            const cleanKey = key.slice(0, -2);
+            if (!data[cleanKey]) data[cleanKey] = [];
+            if (input.type === 'checkbox') {
+                if (input.checked) data[cleanKey].push(input.value);
+            } else {
+                data[cleanKey].push(input.value);
+            }
+        } else if (input.type === 'radio') {
+            if (input.checked) data[key] = input.value;
+        } else if (input.type === 'checkbox') {
+            if (input.checked) data[key] = input.value;
+        } else if (input.type === 'file') {
+            // Skip file inputs for auto-save (can't serialize)
+        } else {
+            data[key] = input.value;
+        }
+    });
+    return data;
+}
+
+/**
+ * Persist current form progress to the server draft endpoint.
+ * Final multi-page submit only sends the last page's fields; earlier answers
+ * must already live in the draft (and cookie) or SecurePublicFormSubmission
+ * will reject the request as unexpected input / wrong last page.
+ *
+ * @param {{ force?: boolean }} options  force=true saves even when !isDirty
+ * @returns {Promise<boolean>}
+ */
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.content
+        || currentForm?.querySelector('[name="_token"]')?.value
+        || document.querySelector('input[name="_token"]')?.value
+        || '';
+}
+
+async function saveDraftToServer({ force = false } = {}) {
+    if (!navigator.onLine || !currentForm || !currentSlug) return false;
+    if (!force && !isDirty) return true;
+
+    const data = getAllFormData(currentForm);
+    const csrfToken = getCsrfToken();
+
+    if (!csrfToken) {
+        console.warn('[Auto-save] Missing CSRF token');
+        return false;
+    }
+
+    try {
+        const res = await fetch(`/f/${currentSlug}/draft`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({
+                _token: csrfToken,
+                data: data,
+                current_page: window.currentPageIdx || 0,
+            }),
+        });
+
+        if (res.ok) {
+            isDirty = false;
+            try {
+                const body = await res.json();
+                if (body && typeof body.token === 'string' && body.token !== '') {
+                    draftToken = body.token;
+                }
+            } catch (_) {
+                // Token optional — cookie path still works when available
+            }
+            return true;
+        }
+
+        // 419 = expired CSRF; retry once with the form's live _token if different
+        if (res.status === 419) {
+            const formToken = currentForm?.querySelector('[name="_token"]')?.value || '';
+            if (formToken && formToken !== csrfToken) {
+                const retry = await fetch(`/f/${currentSlug}/draft`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': formToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({
+                        _token: formToken,
+                        data: data,
+                        current_page: window.currentPageIdx || 0,
+                    }),
+                });
+                if (retry.ok) {
+                    isDirty = false;
+                    try {
+                        const body = await retry.json();
+                        if (body && typeof body.token === 'string' && body.token !== '') {
+                            draftToken = body.token;
+                        }
+                    } catch (_) {}
+                    return true;
+                }
+            }
+        }
+
+        console.warn('[Auto-save] Server rejected draft:', res.status);
+        return false;
+    } catch (err) {
+        console.warn('[Auto-save] Failed:', err);
+        return false;
+    }
+}
+
+// Interval / unload auto-save (no-op when clean)
+function performAutoSave() {
+    return saveDraftToServer({ force: false });
+}
+
+function startAutoSave() {
+    stopAutoSave();
+    autoSaveInterval = setInterval(performAutoSave, 60000);
+
+    // Save on page unload for reliability
+    window.addEventListener('beforeunload', handleBeforeUnload);
+}
+
+function stopAutoSave() {
+    if (autoSaveInterval) {
+        clearInterval(autoSaveInterval);
+        autoSaveInterval = null;
+    }
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+}
+
+function handleBeforeUnload() {
+    if (!isDirty || !navigator.onLine || !currentForm || !currentSlug) return;
+
+    const data = getAllFormData(currentForm);
+    const csrfToken = getCsrfToken();
+    // sendBeacon cannot set custom headers; include _token in the JSON body for CSRF.
+    const payload = JSON.stringify({
+        _token: csrfToken,
+        data: data,
+        current_page: window.currentPageIdx || 0,
+    });
+
+    navigator.sendBeacon(
+        `/f/${currentSlug}/draft`,
+        new Blob([payload], { type: 'application/json' })
+    );
 }
 
 // Get the next submission index count number for labeling the boxes
@@ -542,7 +718,7 @@ export async function syncAll() {
                     method: 'POST',
                     headers: {
                         'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                        'X-CSRF-TOKEN': getCsrfToken(),
                     },
                     body: formData
                 });
@@ -846,18 +1022,7 @@ function showOnlineSuccess(message) {
 
 // Handle the final offline page submission (single-page or last page of multi-page)
 async function handleOfflineLastPageSubmit(formEl) {
-    let allFields = {};
-
-    // For multi-page forms, merge all page fields from the DOM
-    if (window.formPages && window.formPages.length > 1) {
-        const visiblePages = window.visiblePages || [];
-        visiblePages.forEach(pageIdx => {
-            const pageData = getPageFormData(formEl, pageIdx);
-            Object.assign(allFields, pageData);
-        });
-    } else {
-        Object.assign(allFields, getPageFormData(formEl, 0));
-    }
+    let allFields = getAllFormData(formEl);
 
     if (editingId) {
         await updateSubmissionWithFields(editingId, allFields);
@@ -868,7 +1033,7 @@ async function handleOfflineLastPageSubmit(formEl) {
         const item = await getSubmission(savedId);
         showToast(`Saved locally (Submission #${item.number}) ✓`, 'amber');
 
-        clearOfflineDraftPages(currentSlug);
+        clearOfflineDraft(currentSlug);
         formEl.reset();
 
         // Reset page display back to first page
@@ -947,49 +1112,23 @@ export async function init(slug, formEl) {
         if (!isLastPage) {
             // "Next" transition
             const nextIdx = visiblePages[currentIdxInVisible + 1];
-            const pageData = getPageFormData(formEl, window.currentPageIdx);
 
-            if (isOffline) {
-                // Offline progress saved locally
-                saveOfflineDraftPage(currentSlug, window.currentPageIdx, pageData);
-            } else {
-                // Online progress sent to server in background
-                const formData = new FormData();
-                formData.append('_token', formEl.querySelector('[name="_token"]').value);
-                formData.append('_hp_time', formEl.querySelector('[name="_hp_time"]').value);
-                const hpWeb = formEl.querySelector('[name="_hp_website"]');
-                if (hpWeb) formData.append('_hp_website', hpWeb.value);
+            // Mark dirty for auto-save
+            isDirty = true;
 
-                for (const [key, value] of Object.entries(pageData)) {
-                    if (Array.isArray(value)) {
-                        value.forEach(v => formData.append(`${key}[]`, v));
-                    } else {
-                        formData.append(key, value);
-                    }
-                }
-
-                // Append file uploads if they exist on the current page
-                inputs.forEach(input => {
-                    if (input.type === 'file' && input.files.length > 0) {
-                        formData.append(input.name, input.files[0]);
-                    }
-                });
-
-                const pageNum = window.currentPageIdx + 1;
-                fetch(`/f/${currentSlug}/page/${pageNum}`, {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'Accept': 'application/json' }
-                }).catch(err => console.error('[Background Save Page Error]', err));
-            }
-
-            // Transition page visually instantaneously
+            // Transition page visually
             activeContainer.style.display = 'none';
             const nextContainer = formEl.querySelector(`.form-page-container[data-page-index="${nextIdx}"]`);
             if (nextContainer) nextContainer.style.display = 'block';
 
             window.currentPageIdx = nextIdx;
             evaluateFormLogic();
+
+            // Await draft save so the draft cookie + prior answers exist before
+            // the user can finish the next page and submit.
+            if (navigator.onLine) {
+                await saveDraftToServer({ force: true });
+            }
         } else {
             // "Final Submit"
             if (isOffline) {
@@ -1000,11 +1139,35 @@ export async function init(slug, formEl) {
                     showToast('Failed to save submission locally', 'amber');
                 }
             } else {
-                // Online submission via background fetch
+                // Online submission via fetch (last page fields only; progress in draft)
                 const submitBtn = document.getElementById('submit-button');
+                const restoreSubmitBtn = () => {
+                    if (!submitBtn) return;
+                    submitBtn.disabled = false;
+                    const pages = window.visiblePages || window.formPages || [];
+                    const idx = (window.visiblePages || []).indexOf(window.currentPageIdx);
+                    const onLast = idx === -1 || idx === pages.length - 1;
+                    submitBtn.textContent = editingId
+                        ? `Update & Save #${editingId} ✓`
+                        : (onLast ? 'Submit' : 'Next →');
+                };
+
                 if (submitBtn) {
                     submitBtn.disabled = true;
                     submitBtn.textContent = 'Submitting...';
+                }
+
+                // Multi-page final submit depends on server-side draft for prior pages
+                // and for correct last-page / conditional-page resolution.
+                const pageCount = (window.formPages || []).length;
+                const needsDraft = pageCount > 1;
+                if (needsDraft) {
+                    const draftSaved = await saveDraftToServer({ force: true });
+                    if (!draftSaved) {
+                        alert('Unable to save your progress. Please check your connection and try again.');
+                        restoreSubmitBtn();
+                        return;
+                    }
                 }
 
                 const pageData = getPageFormData(formEl, window.currentPageIdx);
@@ -1013,9 +1176,14 @@ export async function init(slug, formEl) {
                 formData.append('_hp_time', formEl.querySelector('[name="_hp_time"]').value);
                 const hpWeb = formEl.querySelector('[name="_hp_website"]');
                 if (hpWeb) formData.append('_hp_website', hpWeb.value);
+                // Explicit draft token so middleware can resolve prior pages without relying only on cookies
+                if (draftToken) {
+                    formData.append('_draft_token', draftToken);
+                }
 
                 for (const [key, value] of Object.entries(pageData)) {
                     if (Array.isArray(value)) {
+                        // Laravel expects checkbox arrays as name="field[]" → key without brackets in PHP
                         value.forEach(v => formData.append(`${key}[]`, v));
                     } else {
                         formData.append(key, value);
@@ -1029,43 +1197,53 @@ export async function init(slug, formEl) {
                 });
 
                 try {
+                    const headers = { 'Accept': 'application/json' };
+                    if (draftToken) {
+                        headers['X-Form-Draft-Token'] = draftToken;
+                    }
+
                     const response = await fetch(`/f/${currentSlug}`, {
                         method: 'POST',
+                        credentials: 'same-origin',
                         body: formData,
-                        headers: { 'Accept': 'application/json' }
+                        headers,
                     });
 
-                    const resData = await response.json();
+                    let resData = {};
+                    try {
+                        resData = await response.json();
+                    } catch (_) {
+                        resData = {};
+                    }
 
                     if (response.ok && resData.success) {
-                        clearOfflineDraftPages(currentSlug);
+                        clearOfflineDraft(currentSlug);
+                        draftToken = null;
+                        stopAutoSave();
                         showOnlineSuccess(resData.message || 'Form submitted successfully!');
                     } else {
                         alert(resData.message || 'An error occurred during submission.');
-                        if (submitBtn) {
-                            submitBtn.disabled = false;
-                            submitBtn.textContent = 'Submit';
-                        }
+                        restoreSubmitBtn();
                     }
                 } catch (err) {
                     console.error('[Online Submit Error]', err);
                     alert('Network error. Saving locally instead.');
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = 'Submit';
-                    }
+                    restoreSubmitBtn();
                     await handleOfflineLastPageSubmit(formEl);
                 }
             }
         }
     });
 
-    // Listen to form input changes to evaluate conditional logic in real-time
-    formEl.addEventListener('change', evaluateFormLogic);
-    formEl.addEventListener('input', evaluateFormLogic);
+    // Listen to form input changes to evaluate conditional logic and mark dirty
+    formEl.addEventListener('change', () => { isDirty = true; evaluateFormLogic(); });
+    formEl.addEventListener('input', () => { isDirty = true; evaluateFormLogic(); });
 
     // Run initial form logic evaluation
     evaluateFormLogic();
+
+    // Start interval-based auto-save (every 60s)
+    startAutoSave();
 
     // Listen to network change events
     window.addEventListener('online', async () => {

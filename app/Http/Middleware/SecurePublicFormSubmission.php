@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Form;
+use App\Models\FormDraft;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -29,12 +30,12 @@ class SecurePublicFormSubmission
         'image',
     ];
 
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next): Response|\Illuminate\Http\JsonResponse
     {
         $slug = (string) $request->route('slug', '');
 
         if ($slug === '') {
-            return $this->denySubmission();
+            return $this->denySubmission($request);
         }
 
         $form = Form::query()
@@ -43,49 +44,51 @@ class SecurePublicFormSubmission
             ->first();
 
         if (! $form) {
-            return $this->denySubmission();
+            return $this->denySubmission($request);
         }
 
         if (! $this->passesHoneypot($request)) {
-            return $this->denySubmission();
+            return $this->denySubmission($request);
         }
 
-        // Get saved progress to determine which fields to validate and logic triggers
-        $progress = session()->get("form_progress.{$form->id}", []);
-
-        // Determine current page number
-        $pageRouteParam = $request->route('page');
-        if ($pageRouteParam !== null) {
-            $currentPageNumber = (int) $pageRouteParam;
-        } else {
-            // Final submit assumes the last visible page.
-            $visiblePages = $this->getVisiblePageIndexes($form, $progress);
-            $lastPageIdx = !empty($visiblePages) ? end($visiblePages) : 0;
-            $currentPageNumber = $lastPageIdx + 1;
+        // Read progress from DB draft via cookie token, header, or body (flat format).
+        // Header/body cover the race where draft was just saved but Set-Cookie is not
+        // yet available on the immediately following final-submit request.
+        $draftData = [];
+        $token = $this->resolveDraftToken($request, $form);
+        if ($token) {
+            $draft = FormDraft::where('form_id', $form->id)->where('token', $token)->first();
+            if ($draft) {
+                $draftData = $draft->data ?? [];
+            }
         }
 
-        $currentPageIdx = $currentPageNumber - 1;
-        $fieldsToValidate = $form->getPageFields($currentPageIdx);
+        // Final submit validates only the last visible page's fields
+        $visiblePages = $form->getVisiblePageIndexes($draftData);
+        $lastPageIdx = ! empty($visiblePages) ? end($visiblePages) : 0;
+        $fieldsToValidate = $form->getPageFields($lastPageIdx);
 
         // Verify no unexpected inputs for the current page
         if ($this->hasUnexpectedInputs($request, $fieldsToValidate)) {
-            return $this->denySubmission();
+            return $this->denySubmission($request);
         }
 
-        // Flatten all data (previous saved progress + current inputs) to evaluate conditions
-        $flatData = [];
-        foreach ($progress as $pIdx => $pageData) {
-            if ($pIdx !== $currentPageIdx && is_array($pageData)) {
-                $flatData = array_merge($flatData, $pageData);
-            }
-        }
-        $flatData = array_merge($flatData, $request->all());
+        // Merge draft data with current request inputs for conditional logic evaluation
+        $flatData = array_merge($draftData, $request->all());
 
         [$rules, $attributes] = $this->buildValidationRules($fieldsToValidate, $flatData);
 
         $validator = Validator::make($request->all(), $rules, [], $attributes);
 
         if ($validator->fails()) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors(),
+                    'message' => 'Validation failed: ' . implode(' ', $validator->errors()->all()),
+                ], 422);
+            }
+
             return back()
                 ->withInput()
                 ->withErrors($validator);
@@ -93,8 +96,29 @@ class SecurePublicFormSubmission
 
         $request->attributes->set('publicForm', $form);
         $request->attributes->set('validatedPublicSubmission', $validator->validated());
+        $request->attributes->set('publicFormDraftToken', $token);
 
         return $next($request);
+    }
+
+    /**
+     * Resolve draft token from cookie, header, or request body.
+     */
+    protected function resolveDraftToken(Request $request, Form $form): ?string
+    {
+        $candidates = [
+            $request->cookie("form_draft_{$form->id}"),
+            $request->header('X-Form-Draft-Token'),
+            $request->input('_draft_token'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && $candidate !== '' && strlen($candidate) <= 100) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     protected function passesHoneypot(Request $request): bool
@@ -263,7 +287,7 @@ class SecurePublicFormSubmission
      */
     protected function hasUnexpectedInputs(Request $request, array $fields): bool
     {
-        $allowedKeys = ['_token', '_hp_website', '_hp_time'];
+        $allowedKeys = ['_token', '_hp_website', '_hp_time', '_draft_token'];
 
         foreach ($fields as $field) {
             $type = (string) ($field['type'] ?? '');
@@ -306,8 +330,15 @@ class SecurePublicFormSubmission
         return array_values(array_filter($options, static fn(string $option): bool => $option !== ''));
     }
 
-    protected function denySubmission(): Response
+    protected function denySubmission(?Request $request = null): Response|\Illuminate\Http\JsonResponse
     {
+        if ($request && $request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to validate your submission. Please refresh and try again.',
+            ], 400);
+        }
+
         return back()
             ->withInput()
             ->withErrors([
@@ -341,24 +372,4 @@ class SecurePublicFormSubmission
         return $action === 'show' ? $conditionMet : ! $conditionMet;
     }
 
-    private function getVisiblePageIndexes(Form $form, array $progressData): array
-    {
-        $visible = [];
-        $pages = $form->getPages();
-
-        $flatData = [];
-        foreach ($progressData as $pageData) {
-            if (is_array($pageData)) {
-                $flatData = array_merge($flatData, $pageData);
-            }
-        }
-
-        foreach ($pages as $i => $page) {
-            if ($this->shouldDisplayByConditionalLogic($page['conditionalLogic'] ?? null, $flatData)) {
-                $visible[] = $i;
-            }
-        }
-
-        return $visible;
-    }
 }

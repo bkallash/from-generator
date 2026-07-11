@@ -189,7 +189,7 @@
                                             // Calculate initial visibility server-side
                                             $initiallyHidden = false;
                                             if ($hasLogic && $logicTriggerField) {
-                                                $flatProgress = collect($progress)->collapse()->all();
+                                                $flatProgress = $progress;
                                                 $triggerVal = $flatProgress[$logicTriggerField] ?? null;
 
                                                 $conditionMet = false;
@@ -233,7 +233,7 @@
                                                     <input type="{{ $field['type'] }}" id="{{ $fieldId }}"
                                                         name="{{ $field['id'] }}" placeholder="{{ $field['placeholder'] ?? '' }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif
-                                                        value="{{ old($field['id'], collect($progress)->collapse()->get($field['id'], '')) }}"
+                                                        value="{{ old($field['id'], $progress[$field['id']] ?? '') }}"
                                                         class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">
                                                     @error($field['id'])
                                                         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -251,7 +251,7 @@
                                                     <input type="tel" id="{{ $fieldId }}" name="{{ $field['id'] }}"
                                                         placeholder="{{ $field['placeholder'] ?? '' }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif
-                                                        value="{{ old($field['id'], collect($progress)->collapse()->get($field['id'], '')) }}"
+                                                        value="{{ old($field['id'], $progress[$field['id']] ?? '') }}"
                                                         class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">
                                                     @error($field['id'])
                                                         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -268,7 +268,7 @@
                                                     </label>
                                                     <textarea id="{{ $fieldId }}" name="{{ $field['id'] }}" placeholder="{{ $field['placeholder'] ?? '' }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif rows="4"
-                                                        class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent resize-y transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">{{ old($field['id'], collect($progress)->collapse()->get($field['id'], '')) }}</textarea>
+                                                        class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent resize-y transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">{{ old($field['id'], $progress[$field['id']] ?? '') }}</textarea>
                                                     @error($field['id'])
                                                         <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
                                                     @enderror
@@ -288,7 +288,7 @@
                                                         <option value="">{{ $field['placeholder'] ?? 'Select an option' }}
                                                         </option>
                                                         @foreach (array_filter(array_map('trim', is_array($field['options'] ?? '') ? $field['options'] ?? [] : explode("\n", $field['options'] ?? ''))) as $option)
-                                                            <option value="{{ $option }}" @selected(old($field['id'], collect($progress)->collapse()->get($field['id'], '')) === $option)>
+                                                            <option value="{{ $option }}" @selected(old($field['id'], $progress[$field['id']] ?? '') === $option)>
                                                                 {{ $option }}</option>
                                                         @endforeach
                                                     </select>
@@ -313,7 +313,7 @@
                                                                     <input type="radio" name="{{ $field['id'] }}"
                                                                         value="{{ $option }}"
                                                                         @if ($field['required'] && !$initiallyHidden) required @endif
-                                                                        @checked(old($field['id'], collect($progress)->collapse()->get($field['id'], '')) === $option)
+                                                                        @checked(old($field['id'], $progress[$field['id']] ?? '') === $option)
                                                                         class="w-4 h-4 rounded-full border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:ring-offset-2 dark:focus:ring-offset-neutral-950 transition">
                                                                     <span class="text-sm font-light">{{ $option }}</span>
                                                                 </label>
@@ -336,7 +336,7 @@
                                                         </legend>
                                                         <div class="space-y-2">
                                                             @php
-                                                                $savedVal = collect($progress)->collapse()->get($field['id'], []);
+                                                                $savedVal = $progress[$field['id']] ?? [];
                                                                 if (!is_array($savedVal)) {
                                                                     $savedVal = [$savedVal];
                                                                 }
@@ -424,7 +424,7 @@
 
     <script>
         // Inject previous form progress and pages array for frontend conditional check
-        window.formProgress = @json(collect($progress)->collapse()->all());
+        window.formProgress = @json($progress);
         window.formPages = @json($form->getPages());
         window.currentPageIdx = {{ $currentPageIdx }};
     </script>
