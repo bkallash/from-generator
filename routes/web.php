@@ -37,6 +37,10 @@ Route::middleware('auth')->group(function () {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
 
+// Google OAuth
+Route::get('auth/google', [GoogleController::class, 'redirectToGoogle']);
+Route::get('auth/google/callback', [GoogleController::class, 'handleGoogleCallback']);
+
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/intelligence', [DashboardController::class, 'getIntelligenceData'])->name('dashboard.intelligence');
@@ -63,9 +67,6 @@ Route::get('/submissions/{submission}/files/{fieldId}/download', [SubmissionCont
     ->middleware('throttle:30,1')
     ->name('submissions.files.download-attachment');
 
-// Google OAuth
-Route::get('auth/google', [GoogleController::class, 'redirectToGoogle']);
-Route::get('auth/google/callback', [GoogleController::class, 'handleGoogleCallback']);
 
 // Public form pages
 Route::get('/f/{slug}', [FormController::class, 'show'])->name('forms.show');

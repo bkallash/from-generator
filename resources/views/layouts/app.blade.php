@@ -7,12 +7,17 @@
     <title>@yield('title', 'Form Generator')</title>
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
-    {{-- Apply dark mode immediately to prevent flash --}}
+    {{-- Apply dark mode immediately (before CSS paint) to prevent FOUC / flashbang --}}
     <script>
         (function() {
+            var html = document.documentElement;
             var t = localStorage.getItem('theme');
-            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
+            var dark = t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (dark) {
+                html.classList.add('dark');
+                html.style.colorScheme = 'dark';
+            } else {
+                html.style.colorScheme = 'light';
             }
         })();
     </script>

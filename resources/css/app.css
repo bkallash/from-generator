@@ -15,6 +15,20 @@
     --letter-spacing-tighter: "-0.05em";
 }
 
+/* ─── Document chrome ───────────────────────────────────────────────────────
+   Keep html itself painted so wire:navigate morphs never flash the browser
+   default white background. color-scheme steers form controls / scrollbars.
+   ────────────────────────────────────────────────────────────────────────── */
+html {
+    background-color: #fafafa; /* neutral-50 — matches body light */
+    color-scheme: light;
+}
+
+html.dark {
+    background-color: #171717; /* neutral-900 — matches body dark */
+    color-scheme: dark;
+}
+
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────
    Thin, neutral-palette scrollbar applied globally.
    Webkit (Chrome / Edge / Safari) + Firefox covered.
@@ -70,4 +84,10 @@
 .no-transitions * {
     transition: none !important;
     animation: none !important;
+}
+
+/* Chart.js canvases: never paint browser-default white while resizing/clearing */
+[data-chart-surface] canvas {
+    background-color: transparent !important;
+    display: block;
 }

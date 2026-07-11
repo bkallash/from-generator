@@ -1,7 +1,7 @@
 @extends('layouts.dashboard')
 
 @section('dashboard-content')
-    <div class="transition-colors duration-300">
+    <div>
         @if ($view === 'dashboard')
             @include('dashboard.overview')
         @elseif ($view === 'forms')

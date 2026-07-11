@@ -17,5 +17,8 @@
         "dev": "bun run vite",
         "build": "bun run vite build"
     },
-    "type": "module"
+    "type": "module",
+    "dependencies": {
+        "chart.js": "4.4.4"
+    }
 }
