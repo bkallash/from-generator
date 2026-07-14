@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Terms of Service - Form Generator')
+@section('meta_description', 'Review the Terms of Service for Form Generator. Learn about the rules, guidelines, and terms for using our online form builder.')
 
 @section('nav-actions')
     <a href="{{ route('home') }}"

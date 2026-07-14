@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Privacy Policy - Form Generator')
+@section('meta_description', 'Read the privacy policy for Form Generator. Learn how we handle, store, and protect your personal data and form submissions.')
 
 @section('nav-actions')
     <a href="{{ route('home') }}"

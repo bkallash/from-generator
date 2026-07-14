@@ -1,6 +1,38 @@
 @extends('layouts.app')
 
 @section('title', 'Form Generator - Simple Forms, Powerful Insights')
+@section('meta_description', 'Build professional forms without the bloat. Drag, drop, done. Track every submission with live analytics.')
+
+@section('json_ld')
+<script type="application/ld+json">
+{
+    "@@context": "https://schema.org",
+    "@@type": "WebSite",
+    "name": "Form Generator",
+    "url": "{{ url('/') }}",
+    "description": "Build professional forms without the bloat. Drag, drop, done. Track every submission with live analytics.",
+    "potentialAction": {
+        "@@type": "SearchAction",
+        "target": "{{ url('/') }}/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+    }
+}
+</script>
+<script type="application/ld+json">
+{
+    "@@context": "https://schema.org",
+    "@@type": "SoftwareApplication",
+    "name": "Form Generator",
+    "operatingSystem": "All",
+    "applicationCategory": "BusinessApplication",
+    "offers": {
+        "@@type": "Offer",
+        "price": "0.00",
+        "priceCurrency": "USD"
+    }
+}
+</script>
+@endsection
 
 @section('nav-actions')
     <a href="/login"

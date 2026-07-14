@@ -1,6 +1,20 @@
 @extends('layouts.app')
 
 @section('title', $form->title . ' - Form Generator')
+@section('meta_description', $form->description ? str(strip_tags($form->description))->limit(150) : 'Fill out this online form.')
+@section('canonical_url', route('forms.show', $form->slug))
+
+@section('json_ld')
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "{{ e($form->title) }}",
+    "description": "{{ e($form->description ? str(strip_tags($form->description))->limit(150) : 'Online form.') }}",
+    "url": "{{ route('forms.show', $form->slug) }}"
+}
+</script>
+@endsection
 
 @push('head')
     <!-- Per-form PWA manifest -->

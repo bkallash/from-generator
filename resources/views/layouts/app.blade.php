@@ -6,6 +6,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Form Generator')</title>
+    <meta name="description" content="@yield('meta_description', 'Build professional forms without the bloat. Drag, drop, done. Track every submission with live analytics.')">
+    <meta name="keywords" content="@yield('meta_keywords', 'form builder, form generator, drag and drop form, online forms, live analytics, surveys')">
+    <meta name="robots" content="@yield('meta_robots', 'index, follow')">
+    <link rel="canonical" href="@yield('canonical_url', request()->url())">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="@yield('og_type', 'website')">
+    <meta property="og:url" content="@yield('canonical_url', request()->url())">
+    <meta property="og:title" content="@yield('title', 'Form Generator - Simple Forms, Powerful Insights')">
+    <meta property="og:description" content="@yield('meta_description', 'Build professional forms without the bloat. Drag, drop, done. Track every submission with live analytics.')">
+    <meta property="og:image" content="@yield('og_image', asset('og-image.png'))">
+    <meta property="og:site_name" content="Form Generator">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="@yield('canonical_url', request()->url())">
+    <meta name="twitter:title" content="@yield('title', 'Form Generator - Simple Forms, Powerful Insights')">
+    <meta name="twitter:description" content="@yield('meta_description', 'Build professional forms without the bloat. Drag, drop, done. Track every submission with live analytics.')">
+    <meta name="twitter:image" content="@yield('og_image', asset('og-image.png'))">
+
+    <!-- JSON-LD Structured Data -->
+    @yield('json_ld')
+
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     {{-- Apply dark mode immediately (before CSS paint) to prevent FOUC / flashbang --}}
