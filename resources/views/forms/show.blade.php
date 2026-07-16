@@ -7,8 +7,8 @@
 @section('json_ld')
 <script type="application/ld+json">
 {
-    "@context": "https://schema.org",
-    "@type": "WebPage",
+    "@@context": "https://schema.org",
+    "@@type": "WebPage",
     "name": "{{ e($form->title) }}",
     "description": "{{ e($form->description ? str(strip_tags($form->description))->limit(150) : 'Online form.') }}",
     "url": "{{ route('forms.show', $form->slug) }}"
