@@ -4,17 +4,6 @@
 @section('meta_description', $form->description ? str(strip_tags($form->description))->limit(150) : 'Fill out this online form.')
 @section('canonical_url', route('forms.show', $form->slug))
 
-@section('json_ld')
-<script type="application/ld+json">
-{
-    "@@context": "https://schema.org",
-    "@@type": "WebPage",
-    "name": "{{ e($form->title) }}",
-    "description": "{{ e($form->description ? str(strip_tags($form->description))->limit(150) : 'Online form.') }}",
-    "url": "{{ route('forms.show', $form->slug) }}"
-}
-</script>
-@endsection
 
 @push('head')
     <!-- Per-form PWA manifest -->
@@ -124,21 +113,25 @@
                                 <div
                                     class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-neutral-200 dark:bg-neutral-800 -z-10">
                                 </div>
-                                <div id="progress-line" class="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-neutral-900 dark:bg-neutral-100 transition-all duration-300 -z-10"
+                                <div id="progress-line"
+                                    class="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-neutral-900 dark:bg-neutral-100 transition-all duration-300 -z-10"
                                     style="width: {{ count($visiblePages) > 1 ? (array_search($currentPageIdx, $visiblePages) / (count($visiblePages) - 1)) * 100 : 0 }}%">
                                 </div>
 
                                 @foreach ($pages as $pageIdx => $pageObj)
                                     @php
                                         $stepIndex = array_search($pageIdx, $visiblePages);
-                                        $isCompleted = $stepIndex !== false && array_search($currentPageIdx, $visiblePages) > $stepIndex;
+                                        $isCompleted =
+                                            $stepIndex !== false &&
+                                            array_search($currentPageIdx, $visiblePages) > $stepIndex;
                                         $isActive = $currentPageIdx === $pageIdx;
                                         $isVisible = $stepIndex !== false;
                                     @endphp
                                     <div class="step-dot-wrapper flex flex-col items-center gap-1.5 bg-neutral-50 dark:bg-neutral-900 px-2 select-none"
                                         data-step-index="{{ $pageIdx }}"
                                         style="display: {{ $isVisible ? 'flex' : 'none' }}">
-                                        <div class="step-dot w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-semibold transition-all duration-300
+                                        <div
+                                            class="step-dot w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-semibold transition-all duration-300
                                         {{ $isActive
                                             ? 'border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900 shadow-sm scale-110'
                                             : ($isCompleted
@@ -151,10 +144,11 @@
                                                         d="M5 13l4 4L19 7" />
                                                 </svg>
                                             @else
-                                                {{ ($stepIndex !== false ? $stepIndex + 1 : $pageIdx + 1) }}
+                                                {{ $stepIndex !== false ? $stepIndex + 1 : $pageIdx + 1 }}
                                             @endif
                                         </div>
-                                        <span class="step-title text-[10px] font-semibold uppercase tracking-wider transition-colors duration-300
+                                        <span
+                                            class="step-title text-[10px] font-semibold uppercase tracking-wider transition-colors duration-300
                                         {{ $isActive ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-400 dark:text-neutral-500' }}">
                                             {{ Str::limit($pageObj['title'] ?: 'Page ' . ($pageIdx + 1), 12) }}
                                         </span>
@@ -164,8 +158,7 @@
                         </div>
                     @endif
 
-                    <form method="POST"
-                        action="{{ route('forms.submit', ['slug' => $form->slug]) }}"
+                    <form method="POST" action="{{ route('forms.submit', ['slug' => $form->slug]) }}"
                         enctype="multipart/form-data"
                         class="bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 p-8 shadow-sm rounded-lg space-y-6"
                         id="public-form">
@@ -176,13 +169,16 @@
                             value="{{ \Illuminate\Support\Facades\Crypt::encryptString((string) now()->timestamp) }}">
 
                         @foreach ($pages as $pageIdx => $page)
-                            <div class="form-page-container transition-all duration-300" data-page-index="{{ $pageIdx }}" style="display: {{ $pageIdx === $currentPageIdx ? 'block' : 'none' }}">
+                            <div class="form-page-container transition-all duration-300"
+                                data-page-index="{{ $pageIdx }}"
+                                style="display: {{ $pageIdx === $currentPageIdx ? 'block' : 'none' }}">
                                 @if ($form->getPageCount() > 1)
                                     <div class="border-b border-neutral-200 dark:border-neutral-800 pb-5 mb-6">
                                         <h2 class="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
                                             {{ $page['title'] ?: 'Page ' . ($pageIdx + 1) }}</h2>
                                         @if (isset($page['description']) && $page['description'])
-                                            <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400 font-light leading-relaxed">
+                                            <p
+                                                class="mt-2 text-sm text-neutral-500 dark:text-neutral-400 font-light leading-relaxed">
                                                 {{ $page['description'] }}</p>
                                         @endif
                                     </div>
@@ -194,11 +190,15 @@
                                             $fieldId = 'field_' . $field['id'];
 
                                             $hasLogic = isset($field['conditionalLogic']) && $field['conditionalLogic'];
-                                            $logicAction = $hasLogic ? $field['conditionalLogic']['action'] ?? 'show' : '';
+                                            $logicAction = $hasLogic
+                                                ? $field['conditionalLogic']['action'] ?? 'show'
+                                                : '';
                                             $logicTriggerField = $hasLogic
                                                 ? $field['conditionalLogic']['triggerFieldId'] ?? ''
                                                 : '';
-                                            $logicTriggerValue = $hasLogic ? $field['conditionalLogic']['triggerValue'] ?? '' : '';
+                                            $logicTriggerValue = $hasLogic
+                                                ? $field['conditionalLogic']['triggerValue'] ?? ''
+                                                : '';
 
                                             // Calculate initial visibility server-side
                                             $initiallyHidden = false;
@@ -210,7 +210,8 @@
                                                 if (is_array($triggerVal)) {
                                                     $conditionMet = in_array($logicTriggerValue, $triggerVal);
                                                 } else {
-                                                    $conditionMet = (string) $triggerVal === (string) $logicTriggerValue;
+                                                    $conditionMet =
+                                                        (string) $triggerVal === (string) $logicTriggerValue;
                                                 }
 
                                                 $shouldShow = $logicAction === 'show' ? $conditionMet : !$conditionMet;
@@ -218,7 +219,8 @@
                                             }
                                         @endphp
 
-                                        <div class="field-wrapper transition-all duration-300" data-field-id="{{ $field['id'] }}"
+                                        <div class="field-wrapper transition-all duration-300"
+                                            data-field-id="{{ $field['id'] }}"
                                             @if ($initiallyHidden) style="display: none;" @endif
                                             @if ($hasLogic) data-logic-action="{{ $logicAction }}"
                                             data-logic-trigger-field="{{ $logicTriggerField }}"
@@ -226,7 +228,8 @@
 
                                             {{-- Layout elements --}}
                                             @if ($field['type'] === 'heading')
-                                                <h2 class="text-xl font-semibold pt-2 text-neutral-900 dark:text-neutral-100">
+                                                <h2
+                                                    class="text-xl font-semibold pt-2 text-neutral-900 dark:text-neutral-100">
                                                     {{ $field['label'] }}</h2>
                                             @elseif ($field['type'] === 'paragraph')
                                                 <p class="text-neutral-600 dark:text-neutral-400 text-sm leading-relaxed">
@@ -245,12 +248,14 @@
                                                         @endif
                                                     </label>
                                                     <input type="{{ $field['type'] }}" id="{{ $fieldId }}"
-                                                        name="{{ $field['id'] }}" placeholder="{{ $field['placeholder'] ?? '' }}"
+                                                        name="{{ $field['id'] }}"
+                                                        placeholder="{{ $field['placeholder'] ?? '' }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif
                                                         value="{{ old($field['id'], $progress[$field['id']] ?? '') }}"
                                                         class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'phone')
@@ -262,13 +267,15 @@
                                                             <span class="text-red-500">*</span>
                                                         @endif
                                                     </label>
-                                                    <input type="tel" id="{{ $fieldId }}" name="{{ $field['id'] }}"
+                                                    <input type="tel" id="{{ $fieldId }}"
+                                                        name="{{ $field['id'] }}"
                                                         placeholder="{{ $field['placeholder'] ?? '' }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif
                                                         value="{{ old($field['id'], $progress[$field['id']] ?? '') }}"
                                                         class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'textarea')
@@ -284,7 +291,8 @@
                                                         @if ($field['required'] && !$initiallyHidden) required @endif rows="4"
                                                         class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 placeholder-neutral-400 dark:placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent resize-y transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">{{ old($field['id'], $progress[$field['id']] ?? '') }}</textarea>
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'select')
@@ -299,15 +307,18 @@
                                                     <select id="{{ $fieldId }}" name="{{ $field['id'] }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif
                                                         class="w-full px-3.5 py-2.5 text-sm rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-transparent transition @error($field['id']) border-red-400 dark:border-red-600 @enderror">
-                                                        <option value="">{{ $field['placeholder'] ?? 'Select an option' }}
+                                                        <option value="">
+                                                            {{ $field['placeholder'] ?? 'Select an option' }}
                                                         </option>
                                                         @foreach (array_filter(array_map('trim', is_array($field['options'] ?? '') ? $field['options'] ?? [] : explode("\n", $field['options'] ?? ''))) as $option)
-                                                            <option value="{{ $option }}" @selected(old($field['id'], $progress[$field['id']] ?? '') === $option)>
+                                                            <option value="{{ $option }}"
+                                                                @selected(old($field['id'], $progress[$field['id']] ?? '') === $option)>
                                                                 {{ $option }}</option>
                                                         @endforeach
                                                     </select>
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'radio')
@@ -329,13 +340,15 @@
                                                                         @if ($field['required'] && !$initiallyHidden) required @endif
                                                                         @checked(old($field['id'], $progress[$field['id']] ?? '') === $option)
                                                                         class="w-4 h-4 rounded-full border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:ring-offset-2 dark:focus:ring-offset-neutral-950 transition">
-                                                                    <span class="text-sm font-light">{{ $option }}</span>
+                                                                    <span
+                                                                        class="text-sm font-light">{{ $option }}</span>
                                                                 </label>
                                                             @endforeach
                                                         </div>
                                                     </fieldset>
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'checkbox')
@@ -359,15 +372,18 @@
                                                                 <label
                                                                     class="flex items-center gap-2.5 cursor-pointer text-neutral-600 dark:text-neutral-400">
                                                                     <input type="checkbox" name="{{ $field['id'] }}[]"
-                                                                        value="{{ $option }}" @checked(in_array($option, (array) old($field['id'], $savedVal)))
+                                                                        value="{{ $option }}"
+                                                                        @checked(in_array($option, (array) old($field['id'], $savedVal)))
                                                                         class="w-4 h-4 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:ring-offset-2 dark:focus:ring-offset-neutral-950 transition">
-                                                                    <span class="text-sm font-light">{{ $option }}</span>
+                                                                    <span
+                                                                        class="text-sm font-light">{{ $option }}</span>
                                                                 </label>
                                                             @endforeach
                                                         </div>
                                                     </fieldset>
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'image')
@@ -379,11 +395,13 @@
                                                             <span class="text-red-500">*</span>
                                                         @endif
                                                     </label>
-                                                    <input type="file" id="{{ $fieldId }}" name="{{ $field['id'] }}"
-                                                        accept="image/*" @if ($field['required'] && !$initiallyHidden) required @endif
+                                                    <input type="file" id="{{ $fieldId }}"
+                                                        name="{{ $field['id'] }}" accept="image/*"
+                                                        @if ($field['required'] && !$initiallyHidden) required @endif
                                                         class="w-full text-sm text-neutral-600 dark:text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border file:border-neutral-200 dark:file:border-neutral-700 file:text-sm file:font-medium file:bg-white dark:file:bg-neutral-900 file:text-neutral-700 dark:file:text-neutral-300 hover:file:bg-neutral-50 dark:hover:file:bg-neutral-800 file:transition @error($field['id']) border-red-400 @enderror">
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @elseif ($field['type'] === 'file')
@@ -395,11 +413,13 @@
                                                             <span class="text-red-500">*</span>
                                                         @endif
                                                     </label>
-                                                    <input type="file" id="{{ $fieldId }}" name="{{ $field['id'] }}"
+                                                    <input type="file" id="{{ $fieldId }}"
+                                                        name="{{ $field['id'] }}"
                                                         @if ($field['required'] && !$initiallyHidden) required @endif
                                                         class="w-full text-sm text-neutral-600 dark:text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border file:border-neutral-200 dark:file:border-neutral-700 file:text-sm file:font-medium file:bg-white dark:file:bg-neutral-900 file:text-neutral-700 dark:file:text-neutral-300 hover:file:bg-neutral-50 dark:hover:file:bg-neutral-800 file:transition @error($field['id']) border-red-400 @enderror">
                                                     @error($field['id'])
-                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                        <p class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                                            {{ $message }}</p>
                                                     @enderror
                                                 </div>
                                             @endif
@@ -410,7 +430,8 @@
                         @endforeach
 
                         {{-- Navigation and Actions --}}
-                        <div class="pt-6 flex items-center justify-between border-t border-neutral-200 dark:border-neutral-800">
+                        <div
+                            class="pt-6 flex items-center justify-between border-t border-neutral-200 dark:border-neutral-800">
                             <button type="button" id="prev-button"
                                 class="hidden px-5 py-2.5 border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-sm font-medium transition duration-150 rounded">
                                 &larr; Back
@@ -453,7 +474,8 @@
             e.preventDefault();
             window.installPrompt = e;
             const installBtn = document.getElementById('pwa-install-btn');
-            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator
+                .standalone;
             if (installBtn && !isStandalone) {
                 installBtn.classList.remove('hidden');
             }
@@ -462,7 +484,8 @@
         // Click handler for installing PWA bound immediately on DOM load
         document.addEventListener('DOMContentLoaded', () => {
             const installBtn = document.getElementById('pwa-install-btn');
-            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator
+                .standalone;
             if (isStandalone && installBtn) {
                 installBtn.classList.add('hidden');
                 installBtn.style.display = 'none';

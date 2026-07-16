@@ -131,7 +131,7 @@ class FormController extends Controller
             [
                 'data' => $data,
                 'current_page' => $currentPage,
-                'ip_address' => $request->ip(),
+                'ip_address' => $request->header('X-Real-IP', $request->ip()),
             ]
         );
 
@@ -241,7 +241,7 @@ class FormController extends Controller
         Submission::create([
             'form_id'    => $form->id,
             'content'    => $content,
-            'ip_address' => $request->ip(),
+            'ip_address' => $request->header('X-Real-IP', $request->ip()),
         ]);
 
         // Clean up draft (token may come from cookie, header, or body)
@@ -477,7 +477,7 @@ class FormController extends Controller
         Submission::create([
             'form_id'    => $form->id,
             'content'    => $validated,
-            'ip_address' => $request->ip(),
+            'ip_address' => $request->header('X-Real-IP', $request->ip()),
         ]);
 
         return response()->json([
